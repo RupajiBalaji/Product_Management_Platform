@@ -10,128 +10,185 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as CapacityRouteImport } from './routes/capacity'
-import { Route as DirectoryRouteImport } from './routes/directory'
-import { Route as GovernanceRouteImport } from './routes/governance'
-import { Route as NewRouteImport } from './routes/new'
-import { Route as TemplatesRouteImport } from './routes/templates'
-import { Route as WorkspaceRouteImport } from './routes/workspace'
-import { Route as ProjectsProjectIdRouteImport } from './routes/projects.$projectId'
+import { Route as EmployeeRouteImport } from './routes/employee'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as PmRouteImport } from './routes/pm'
+import { Route as EmployeeDashboardRouteImport } from './routes/employee.dashboard'
+import { Route as PmAiHubRouteImport } from './routes/pm.ai-hub'
+import { Route as PmDashboardRouteImport } from './routes/pm.dashboard'
+import { Route as PmEmployeesRouteImport } from './routes/pm.employees'
+import { Route as PmEmployeesEmployeeIdRouteImport } from './routes/pm.employees.$employeeId'
+import { Route as PmProjectsIndexRouteImport } from './routes/pm.projects.index'
+import { Route as PmProjectsProjectIdRouteImport } from './routes/pm.projects.$projectId'
+import { Route as EmployeeTasksTaskIdLogRouteImport } from './routes/employee.tasks.$taskId.log'
+import { Route as PmProjectsProjectIdMatrixRouteImport } from './routes/pm.projects.$projectId.matrix'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const CapacityRoute = CapacityRouteImport.update({
-  id: '/capacity',
-  path: '/capacity',
+const EmployeeRoute = EmployeeRouteImport.update({
+  id: '/employee',
+  path: '/employee',
   getParentRoute: () => rootRouteImport,
 } as any)
-const DirectoryRoute = DirectoryRouteImport.update({
-  id: '/directory',
-  path: '/directory',
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
-const GovernanceRoute = GovernanceRouteImport.update({
-  id: '/governance',
-  path: '/governance',
+const PmRoute = PmRouteImport.update({
+  id: '/pm',
+  path: '/pm',
   getParentRoute: () => rootRouteImport,
 } as any)
-const NewRoute = NewRouteImport.update({
-  id: '/new',
-  path: '/new',
-  getParentRoute: () => rootRouteImport,
+const EmployeeDashboardRoute = EmployeeDashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
+  getParentRoute: () => EmployeeRoute,
 } as any)
-const TemplatesRoute = TemplatesRouteImport.update({
-  id: '/templates',
-  path: '/templates',
-  getParentRoute: () => rootRouteImport,
+const PmAiHubRoute = PmAiHubRouteImport.update({
+  id: '/ai-hub',
+  path: '/ai-hub',
+  getParentRoute: () => PmRoute,
 } as any)
-const WorkspaceRoute = WorkspaceRouteImport.update({
-  id: '/workspace',
-  path: '/workspace',
-  getParentRoute: () => rootRouteImport,
+const PmDashboardRoute = PmDashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
+  getParentRoute: () => PmRoute,
 } as any)
-const ProjectsProjectIdRoute = ProjectsProjectIdRouteImport.update({
+const PmEmployeesRoute = PmEmployeesRouteImport.update({
+  id: '/employees',
+  path: '/employees',
+  getParentRoute: () => PmRoute,
+} as any)
+const PmEmployeesEmployeeIdRoute = PmEmployeesEmployeeIdRouteImport.update({
+  id: '/$employeeId',
+  path: '/$employeeId',
+  getParentRoute: () => PmEmployeesRoute,
+} as any)
+const PmProjectsIndexRoute = PmProjectsIndexRouteImport.update({
+  id: '/projects/',
+  path: '/projects/',
+  getParentRoute: () => PmRoute,
+} as any)
+const PmProjectsProjectIdRoute = PmProjectsProjectIdRouteImport.update({
   id: '/projects/$projectId',
   path: '/projects/$projectId',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => PmRoute,
 } as any)
+const EmployeeTasksTaskIdLogRoute = EmployeeTasksTaskIdLogRouteImport.update({
+  id: '/tasks/$taskId/log',
+  path: '/tasks/$taskId/log',
+  getParentRoute: () => EmployeeRoute,
+} as any)
+const PmProjectsProjectIdMatrixRoute =
+  PmProjectsProjectIdMatrixRouteImport.update({
+    id: '/matrix',
+    path: '/matrix',
+    getParentRoute: () => PmProjectsProjectIdRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/capacity': typeof CapacityRoute
-  '/directory': typeof DirectoryRoute
-  '/governance': typeof GovernanceRoute
-  '/new': typeof NewRoute
-  '/templates': typeof TemplatesRoute
-  '/workspace': typeof WorkspaceRoute
-  '/projects/$projectId': typeof ProjectsProjectIdRoute
+  '/employee': typeof EmployeeRouteWithChildren
+  '/login': typeof LoginRoute
+  '/pm': typeof PmRouteWithChildren
+  '/employee/dashboard': typeof EmployeeDashboardRoute
+  '/pm/ai-hub': typeof PmAiHubRoute
+  '/pm/dashboard': typeof PmDashboardRoute
+  '/pm/employees': typeof PmEmployeesRouteWithChildren
+  '/pm/employees/$employeeId': typeof PmEmployeesEmployeeIdRoute
+  '/pm/projects/$projectId': typeof PmProjectsProjectIdRouteWithChildren
+  '/pm/projects/': typeof PmProjectsIndexRoute
+  '/employee/tasks/$taskId/log': typeof EmployeeTasksTaskIdLogRoute
+  '/pm/projects/$projectId/matrix': typeof PmProjectsProjectIdMatrixRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/capacity': typeof CapacityRoute
-  '/directory': typeof DirectoryRoute
-  '/governance': typeof GovernanceRoute
-  '/new': typeof NewRoute
-  '/templates': typeof TemplatesRoute
-  '/workspace': typeof WorkspaceRoute
-  '/projects/$projectId': typeof ProjectsProjectIdRoute
+  '/employee': typeof EmployeeRouteWithChildren
+  '/login': typeof LoginRoute
+  '/pm': typeof PmRouteWithChildren
+  '/employee/dashboard': typeof EmployeeDashboardRoute
+  '/pm/ai-hub': typeof PmAiHubRoute
+  '/pm/dashboard': typeof PmDashboardRoute
+  '/pm/employees': typeof PmEmployeesRouteWithChildren
+  '/pm/employees/$employeeId': typeof PmEmployeesEmployeeIdRoute
+  '/pm/projects/$projectId': typeof PmProjectsProjectIdRouteWithChildren
+  '/pm/projects': typeof PmProjectsIndexRoute
+  '/employee/tasks/$taskId/log': typeof EmployeeTasksTaskIdLogRoute
+  '/pm/projects/$projectId/matrix': typeof PmProjectsProjectIdMatrixRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/capacity': typeof CapacityRoute
-  '/directory': typeof DirectoryRoute
-  '/governance': typeof GovernanceRoute
-  '/new': typeof NewRoute
-  '/templates': typeof TemplatesRoute
-  '/workspace': typeof WorkspaceRoute
-  '/projects/$projectId': typeof ProjectsProjectIdRoute
+  '/employee': typeof EmployeeRouteWithChildren
+  '/login': typeof LoginRoute
+  '/pm': typeof PmRouteWithChildren
+  '/employee/dashboard': typeof EmployeeDashboardRoute
+  '/pm/ai-hub': typeof PmAiHubRoute
+  '/pm/dashboard': typeof PmDashboardRoute
+  '/pm/employees': typeof PmEmployeesRouteWithChildren
+  '/pm/employees/$employeeId': typeof PmEmployeesEmployeeIdRoute
+  '/pm/projects/$projectId': typeof PmProjectsProjectIdRouteWithChildren
+  '/pm/projects/': typeof PmProjectsIndexRoute
+  '/employee/tasks/$taskId/log': typeof EmployeeTasksTaskIdLogRoute
+  '/pm/projects/$projectId/matrix': typeof PmProjectsProjectIdMatrixRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/capacity'
-    | '/directory'
-    | '/governance'
-    | '/new'
-    | '/templates'
-    | '/workspace'
-    | '/projects/$projectId'
+    | '/employee'
+    | '/login'
+    | '/pm'
+    | '/employee/dashboard'
+    | '/pm/ai-hub'
+    | '/pm/dashboard'
+    | '/pm/employees'
+    | '/pm/employees/$employeeId'
+    | '/pm/projects/$projectId'
+    | '/pm/projects/'
+    | '/employee/tasks/$taskId/log'
+    | '/pm/projects/$projectId/matrix'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/capacity'
-    | '/directory'
-    | '/governance'
-    | '/new'
-    | '/templates'
-    | '/workspace'
-    | '/projects/$projectId'
+    | '/employee'
+    | '/login'
+    | '/pm'
+    | '/employee/dashboard'
+    | '/pm/ai-hub'
+    | '/pm/dashboard'
+    | '/pm/employees'
+    | '/pm/employees/$employeeId'
+    | '/pm/projects/$projectId'
+    | '/pm/projects'
+    | '/employee/tasks/$taskId/log'
+    | '/pm/projects/$projectId/matrix'
   id:
     | '__root__'
     | '/'
-    | '/capacity'
-    | '/directory'
-    | '/governance'
-    | '/new'
-    | '/templates'
-    | '/workspace'
-    | '/projects/$projectId'
+    | '/employee'
+    | '/login'
+    | '/pm'
+    | '/employee/dashboard'
+    | '/pm/ai-hub'
+    | '/pm/dashboard'
+    | '/pm/employees'
+    | '/pm/employees/$employeeId'
+    | '/pm/projects/$projectId'
+    | '/pm/projects/'
+    | '/employee/tasks/$taskId/log'
+    | '/pm/projects/$projectId/matrix'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  CapacityRoute: typeof CapacityRoute
-  DirectoryRoute: typeof DirectoryRoute
-  GovernanceRoute: typeof GovernanceRoute
-  NewRoute: typeof NewRoute
-  TemplatesRoute: typeof TemplatesRoute
-  WorkspaceRoute: typeof WorkspaceRoute
-  ProjectsProjectIdRoute: typeof ProjectsProjectIdRoute
+  EmployeeRoute: typeof EmployeeRouteWithChildren
+  LoginRoute: typeof LoginRoute
+  PmRoute: typeof PmRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
@@ -143,78 +200,154 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/capacity': {
-      id: '/capacity'
-      path: '/capacity'
-      fullPath: '/capacity'
-      preLoaderRoute: typeof CapacityRouteImport
+    '/employee': {
+      id: '/employee'
+      path: '/employee'
+      fullPath: '/employee'
+      preLoaderRoute: typeof EmployeeRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/directory': {
-      id: '/directory'
-      path: '/directory'
-      fullPath: '/directory'
-      preLoaderRoute: typeof DirectoryRouteImport
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/governance': {
-      id: '/governance'
-      path: '/governance'
-      fullPath: '/governance'
-      preLoaderRoute: typeof GovernanceRouteImport
+    '/pm': {
+      id: '/pm'
+      path: '/pm'
+      fullPath: '/pm'
+      preLoaderRoute: typeof PmRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/new': {
-      id: '/new'
-      path: '/new'
-      fullPath: '/new'
-      preLoaderRoute: typeof NewRouteImport
-      parentRoute: typeof rootRouteImport
+    '/employee/dashboard': {
+      id: '/employee/dashboard'
+      path: '/dashboard'
+      fullPath: '/employee/dashboard'
+      preLoaderRoute: typeof EmployeeDashboardRouteImport
+      parentRoute: typeof EmployeeRoute
     }
-    '/templates': {
-      id: '/templates'
-      path: '/templates'
-      fullPath: '/templates'
-      preLoaderRoute: typeof TemplatesRouteImport
-      parentRoute: typeof rootRouteImport
+    '/pm/ai-hub': {
+      id: '/pm/ai-hub'
+      path: '/ai-hub'
+      fullPath: '/pm/ai-hub'
+      preLoaderRoute: typeof PmAiHubRouteImport
+      parentRoute: typeof PmRoute
     }
-    '/workspace': {
-      id: '/workspace'
-      path: '/workspace'
-      fullPath: '/workspace'
-      preLoaderRoute: typeof WorkspaceRouteImport
-      parentRoute: typeof rootRouteImport
+    '/pm/dashboard': {
+      id: '/pm/dashboard'
+      path: '/dashboard'
+      fullPath: '/pm/dashboard'
+      preLoaderRoute: typeof PmDashboardRouteImport
+      parentRoute: typeof PmRoute
     }
-    '/projects/$projectId': {
-      id: '/projects/$projectId'
+    '/pm/employees': {
+      id: '/pm/employees'
+      path: '/employees'
+      fullPath: '/pm/employees'
+      preLoaderRoute: typeof PmEmployeesRouteImport
+      parentRoute: typeof PmRoute
+    }
+    '/pm/employees/$employeeId': {
+      id: '/pm/employees/$employeeId'
+      path: '/$employeeId'
+      fullPath: '/pm/employees/$employeeId'
+      preLoaderRoute: typeof PmEmployeesEmployeeIdRouteImport
+      parentRoute: typeof PmEmployeesRoute
+    }
+    '/pm/projects/': {
+      id: '/pm/projects/'
+      path: '/projects'
+      fullPath: '/pm/projects/'
+      preLoaderRoute: typeof PmProjectsIndexRouteImport
+      parentRoute: typeof PmRoute
+    }
+    '/pm/projects/$projectId': {
+      id: '/pm/projects/$projectId'
       path: '/projects/$projectId'
-      fullPath: '/projects/$projectId'
-      preLoaderRoute: typeof ProjectsProjectIdRouteImport
-      parentRoute: typeof rootRouteImport
+      fullPath: '/pm/projects/$projectId'
+      preLoaderRoute: typeof PmProjectsProjectIdRouteImport
+      parentRoute: typeof PmRoute
+    }
+    '/employee/tasks/$taskId/log': {
+      id: '/employee/tasks/$taskId/log'
+      path: '/tasks/$taskId/log'
+      fullPath: '/employee/tasks/$taskId/log'
+      preLoaderRoute: typeof EmployeeTasksTaskIdLogRouteImport
+      parentRoute: typeof EmployeeRoute
+    }
+    '/pm/projects/$projectId/matrix': {
+      id: '/pm/projects/$projectId/matrix'
+      path: '/matrix'
+      fullPath: '/pm/projects/$projectId/matrix'
+      preLoaderRoute: typeof PmProjectsProjectIdMatrixRouteImport
+      parentRoute: typeof PmProjectsProjectIdRoute
     }
   }
 }
 
+interface EmployeeRouteChildren {
+  EmployeeDashboardRoute: typeof EmployeeDashboardRoute
+  EmployeeTasksTaskIdLogRoute: typeof EmployeeTasksTaskIdLogRoute
+}
+
+const EmployeeRouteChildren: EmployeeRouteChildren = {
+  EmployeeDashboardRoute: EmployeeDashboardRoute,
+  EmployeeTasksTaskIdLogRoute: EmployeeTasksTaskIdLogRoute,
+}
+
+const EmployeeRouteWithChildren = EmployeeRoute._addFileChildren(
+  EmployeeRouteChildren,
+)
+
+interface PmEmployeesRouteChildren {
+  PmEmployeesEmployeeIdRoute: typeof PmEmployeesEmployeeIdRoute
+}
+
+const PmEmployeesRouteChildren: PmEmployeesRouteChildren = {
+  PmEmployeesEmployeeIdRoute: PmEmployeesEmployeeIdRoute,
+}
+
+const PmEmployeesRouteWithChildren = PmEmployeesRoute._addFileChildren(
+  PmEmployeesRouteChildren,
+)
+
+interface PmProjectsProjectIdRouteChildren {
+  PmProjectsProjectIdMatrixRoute: typeof PmProjectsProjectIdMatrixRoute
+}
+
+const PmProjectsProjectIdRouteChildren: PmProjectsProjectIdRouteChildren = {
+  PmProjectsProjectIdMatrixRoute: PmProjectsProjectIdMatrixRoute,
+}
+
+const PmProjectsProjectIdRouteWithChildren =
+  PmProjectsProjectIdRoute._addFileChildren(PmProjectsProjectIdRouteChildren)
+
+interface PmRouteChildren {
+  PmAiHubRoute: typeof PmAiHubRoute
+  PmDashboardRoute: typeof PmDashboardRoute
+  PmEmployeesRoute: typeof PmEmployeesRouteWithChildren
+  PmProjectsProjectIdRoute: typeof PmProjectsProjectIdRouteWithChildren
+  PmProjectsIndexRoute: typeof PmProjectsIndexRoute
+}
+
+const PmRouteChildren: PmRouteChildren = {
+  PmAiHubRoute: PmAiHubRoute,
+  PmDashboardRoute: PmDashboardRoute,
+  PmEmployeesRoute: PmEmployeesRouteWithChildren,
+  PmProjectsProjectIdRoute: PmProjectsProjectIdRouteWithChildren,
+  PmProjectsIndexRoute: PmProjectsIndexRoute,
+}
+
+const PmRouteWithChildren = PmRoute._addFileChildren(PmRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  CapacityRoute: CapacityRoute,
-  DirectoryRoute: DirectoryRoute,
-  GovernanceRoute: GovernanceRoute,
-  NewRoute: NewRoute,
-  TemplatesRoute: TemplatesRoute,
-  WorkspaceRoute: WorkspaceRoute,
-  ProjectsProjectIdRoute: ProjectsProjectIdRoute,
+  EmployeeRoute: EmployeeRouteWithChildren,
+  LoginRoute: LoginRoute,
+  PmRoute: PmRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}

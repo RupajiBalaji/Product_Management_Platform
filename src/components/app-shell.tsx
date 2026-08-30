@@ -1,127 +1,247 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
   LayoutDashboard,
-  FolderKanban,
-  GaugeCircle,
   Users,
-  ShieldCheck,
-  Copy,
-  MessagesSquare,
-  Bell,
+  FolderKanban,
   Sparkles,
+  LogOut,
+  Sun,
+  Moon,
+  Menu,
+  X,
+  Layers,
+  Repeat,
+  Zap,
 } from "lucide-react";
-import type { ReactNode } from "react";
-import { alerts } from "@/lib/platform-data";
+import { useState, type ReactNode } from "react";
+import { useAuth } from "@/context/AuthContext";
+import { useTheme } from "@/hooks/use-theme";
+import { toggleUserRole } from "@/lib/db";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
+import { useNavigate } from "@tanstack/react-router";
+import { AICopilotSidebar } from "./AICopilotSidebar";
 
-const nav = [
-  { to: "/", label: "Portfolio", icon: LayoutDashboard },
-  { to: "/projects/notification-engine", label: "Command Center", icon: FolderKanban, match: "/projects" },
-  { to: "/new", label: "New Project", icon: Sparkles },
-  { to: "/capacity", label: "Capacity Ledger", icon: GaugeCircle },
-  { to: "/directory", label: "Directory & Roles", icon: Users },
-  { to: "/governance", label: "Resilience & Governance", icon: ShieldCheck },
-  { to: "/templates", label: "Template Library", icon: Copy },
-  { to: "/workspace", label: "Employee Workspace", icon: MessagesSquare },
+const pmNav = [
+  { to: "/pm/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { to: "/pm/projects", label: "Projects & Tasks", icon: FolderKanban },
+  { to: "/pm/employees", label: "Workforce Directory", icon: Users },
+  { to: "/pm/ai-hub", label: "AI Summary Hub", icon: Sparkles },
 ];
 
-export function AppShell({
-  children,
-  title,
-  eyebrow,
-  actions,
-}: {
+const employeeNav = [
+  { to: "/employee/dashboard", label: "Developer Workspace", icon: LayoutDashboard },
+  { to: "/pm/projects", label: "All Projects & Teams", icon: Layers },
+];
+
+interface AppShellProps {
   children: ReactNode;
   title: string;
-  eyebrow: string;
+  eyebrow?: string;
   actions?: ReactNode;
-}) {
+}
+
+export function AppShell({ children, title, eyebrow, actions }: AppShellProps) {
   const path = useRouterState({ select: (s) => s.location.pathname });
-  const criticalCount = alerts.filter((a) => a.severity === "critical").length;
+  const { userProfile, setUserProfile, logout } = useAuth();
+  const { theme, toggleTheme } = useTheme();
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [aiCopilotOpen, setAiCopilotOpen] = useState(false);
+  const [switchingRole, setSwitchingRole] = useState(false);
+  const navigate = useNavigate();
+
+  const isPM = userProfile?.user_type === "pm";
+  const nav = isPM ? pmNav : employeeNav;
+
+  const handleLogout = async () => {
+    await logout();
+    navigate({ to: "/login" });
+    toast.success("Signed out successfully");
+  };
+
+  const handleToggleRole = async () => {
+    setSwitchingRole(true);
+    try {
+      const updated = await toggleUserRole();
+      setUserProfile(updated);
+      toast.success(`Switched role to: ${updated.user_type === "pm" ? "Project Manager" : "Developer / Contributor"}`);
+      navigate({ to: updated.user_type === "pm" ? "/pm/dashboard" : "/employee/dashboard" });
+    } catch (err: any) {
+      toast.error(err.message || "Failed to switch role");
+    } finally {
+      setSwitchingRole(false);
+    }
+  };
+
+  const SidebarContent = () => (
+    <>
+      {/* Brand Logo Header */}
+      <Link
+        to={isPM ? "/pm/dashboard" : "/employee/dashboard"}
+        className="mb-6 flex items-center gap-3 px-1.5 py-1 group"
+      >
+        <div className="flex size-10 items-center justify-center rounded-2xl bg-gradient-to-br from-primary via-indigo-600 to-purple-700 text-white shadow-glow group-hover:scale-105 transition-transform duration-200">
+          <Zap className="size-5" />
+        </div>
+        <div className="leading-tight min-w-0">
+          <span className="block font-display text-sm font-extrabold tracking-tight text-sidebar-foreground truncate group-hover:text-primary transition-colors">
+            Autonomous PM
+          </span>
+          <span className="text-eyebrow text-[9px] text-primary/90 font-bold uppercase tracking-wider">
+            {isPM ? "Project Manager" : "Developer Portal"}
+          </span>
+        </div>
+      </Link>
+
+      {/* Main Navigation Links */}
+      <nav className="flex flex-col gap-1.5 flex-1">
+        {nav.map((item) => {
+          const active = path === item.to || path.startsWith(item.to + "/");
+          return (
+            <Link
+              key={item.label}
+              to={item.to}
+              onClick={() => setMobileOpen(false)}
+              className={cn(
+                "group relative flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-xs font-semibold transition-all duration-150",
+                active
+                  ? "bg-primary/15 text-primary border border-primary/30 shadow-xs"
+                  : "text-muted-foreground hover:bg-sidebar-accent/70 hover:text-foreground hover:border hover:border-border/60"
+              )}
+            >
+              <item.icon
+                className={cn(
+                  "size-4 shrink-0 transition-colors",
+                  active ? "text-primary" : "text-muted-foreground group-hover:text-foreground"
+                )}
+              />
+              <span className="truncate">{item.label}</span>
+              {active && (
+                <span className="ml-auto size-1.5 rounded-full bg-primary animate-pulse" />
+              )}
+            </Link>
+          );
+        })}
+      </nav>
+
+      {/* User Profile & Fast Dual-Role Switcher */}
+      <div className="mt-auto space-y-2.5 pt-4 border-t border-sidebar-border/80">
+        <div className="rounded-2xl border border-sidebar-border/80 bg-sidebar-accent/30 p-3 backdrop-blur-sm">
+          <div className="flex items-center gap-2.5 mb-2.5">
+            <div className="relative">
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary/30 to-indigo-500/20 border border-primary/40 font-display font-bold text-primary text-xs">
+                {(userProfile?.full_name || "User")
+                  .split(" ")
+                  .map((n) => n[0])
+                  .join("")
+                  .slice(0, 2)
+                  .toUpperCase()}
+              </span>
+              <span className="absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full bg-emerald-500 ring-2 ring-sidebar" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-bold text-foreground truncate">{userProfile?.full_name || "User"}</p>
+              <p className="text-[10px] text-muted-foreground font-mono truncate">{userProfile?.role_title || "Team Member"}</p>
+            </div>
+          </div>
+
+          <button
+            onClick={handleToggleRole}
+            disabled={switchingRole}
+            className="w-full flex items-center justify-center gap-1.5 rounded-xl border border-border bg-card/80 py-2 px-2 text-[11px] font-semibold text-muted-foreground hover:text-foreground hover:border-primary/40 hover:bg-card transition-all cursor-pointer shadow-xs"
+            title="Switch between PM and Developer views"
+          >
+            <Repeat className={cn("size-3.5 text-primary", switchingRole && "animate-spin")} />
+            <span>Switch to {isPM ? "Developer View" : "PM View"}</span>
+          </button>
+        </div>
+
+        <button
+          onClick={handleLogout}
+          className="w-full flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors cursor-pointer"
+        >
+          <LogOut className="size-3.5" />
+          Sign Out
+        </button>
+      </div>
+    </>
+  );
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="flex min-h-screen">
-        <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar px-3 py-5 lg:flex">
-          <Link to="/" className="mb-7 flex items-center gap-2.5 px-2">
-            <span className="flex size-8 items-center justify-center rounded-md bg-primary font-display text-sm font-bold text-primary-foreground">
-              PM
-            </span>
-            <span className="leading-tight">
-              <span className="block font-display text-sm font-semibold text-sidebar-foreground">
-                Autonomous PM
-              </span>
-              <span className="text-eyebrow">Command Platform</span>
-            </span>
-          </Link>
+    <div className="min-h-screen bg-background text-foreground flex">
+      {/* Desktop Sidebar */}
+      <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar/90 backdrop-blur-xl px-4 py-5 lg:flex z-30">
+        <SidebarContent />
+      </aside>
 
-          <nav className="flex flex-col gap-0.5">
-            {nav.map((item) => {
-              const active = item.match ? path.startsWith(item.match) : path === item.to;
-              return (
-                <Link
-                  key={item.label}
-                  to={item.to}
-                  className={cn(
-                    "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors",
-                    active
-                      ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                      : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground",
-                  )}
-                >
-                  <item.icon className={cn("size-4", active && "text-primary")} />
-                  {item.label}
-                </Link>
-              );
-            })}
-          </nav>
+      {/* Mobile Drawer */}
+      {mobileOpen && (
+        <div className="fixed inset-0 z-50 flex lg:hidden">
+          <div className="fixed inset-0 bg-background/80 backdrop-blur-md" onClick={() => setMobileOpen(false)} />
+          <aside className="relative z-10 flex w-72 flex-col border-r border-sidebar-border bg-sidebar px-4 py-5 shadow-2xl">
+            <button
+              onClick={() => setMobileOpen(false)}
+              className="absolute right-3 top-4 rounded-xl p-2 text-muted-foreground hover:bg-sidebar-accent cursor-pointer"
+            >
+              <X className="size-5" />
+            </button>
+            <SidebarContent />
+          </aside>
+        </div>
+      )}
 
-          <div className="mt-auto rounded-lg border border-sidebar-border bg-sidebar-accent/40 p-3">
-            <p className="text-eyebrow">Containment</p>
-            <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-              100% internal platform containment. Zero external mail dependencies — all governance
-              stays in-platform.
-            </p>
-          </div>
-        </aside>
-
-        <div className="flex min-w-0 flex-1 flex-col">
-          <header className="sticky top-0 z-20 border-b border-border bg-background/85 backdrop-blur">
-            <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 lg:px-8">
+      {/* Main Content Area */}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="sticky top-0 z-20 glass-header">
+          <div className="flex items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-8">
+            <div className="flex items-center gap-3 min-w-0">
+              <button
+                onClick={() => setMobileOpen(true)}
+                className="flex size-9 items-center justify-center rounded-xl border border-border bg-card text-muted-foreground lg:hidden cursor-pointer hover:text-foreground"
+              >
+                <Menu className="size-4.5" />
+              </button>
               <div className="min-w-0">
-                <p className="text-eyebrow">{eyebrow}</p>
-                <h1 className="truncate font-display text-xl font-semibold text-foreground">
+                {eyebrow && <p className="text-eyebrow text-[9px] mb-0.5">{eyebrow}</p>}
+                <h1 className="truncate font-display text-base sm:text-lg font-extrabold tracking-tight text-foreground">
                   {title}
                 </h1>
               </div>
-              <div className="flex items-center gap-2">
-                {actions}
-                <Link
-                  to="/governance"
-                  className="relative flex size-9 items-center justify-center rounded-md border border-border bg-card text-muted-foreground transition-colors hover:text-foreground"
-                  aria-label="Escalations"
-                >
-                  <Bell className="size-4" />
-                  {criticalCount > 0 && (
-                    <span className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-destructive text-[10px] font-semibold text-destructive-foreground">
-                      {criticalCount}
-                    </span>
-                  )}
-                </Link>
-                <div className="flex items-center gap-2 rounded-md border border-border bg-card px-2.5 py-1.5">
-                  <span className="flex size-6 items-center justify-center rounded-full bg-primary/20 font-mono text-[10px] font-bold text-primary">
-                    PM
-                  </span>
-                  <span className="hidden text-xs text-muted-foreground sm:inline">
-                    Product Manager
-                  </span>
-                </div>
-              </div>
             </div>
-          </header>
-          <main className="flex-1 px-5 py-6 lg:px-8">{children}</main>
-        </div>
+
+            <div className="flex items-center gap-2.5">
+              {/* Omnipresent AI Copilot Trigger Button */}
+              <button
+                onClick={() => setAiCopilotOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-primary/40 bg-gradient-to-r from-primary/20 via-primary/10 to-indigo-500/20 px-3.5 py-1.5 text-xs font-bold text-primary hover:bg-primary/25 shadow-glow transition-all cursor-pointer"
+              >
+                <Sparkles className="size-3.5 text-primary animate-pulse" />
+                <span className="hidden sm:inline">Ask AI Copilot</span>
+              </button>
+
+              {actions}
+
+              {/* Theme Switcher */}
+              <button
+                onClick={toggleTheme}
+                className="flex size-9 items-center justify-center rounded-xl border border-border bg-card text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground cursor-pointer shadow-xs"
+                title="Toggle theme"
+              >
+                {theme === "dark" ? (
+                  <Sun className="size-4 text-amber-400" />
+                ) : (
+                  <Moon className="size-4 text-indigo-500" />
+                )}
+              </button>
+            </div>
+          </div>
+        </header>
+
+        <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8 max-w-7xl w-full mx-auto">{children}</main>
       </div>
+
+      {/* Omnipresent AI Copilot Slideout Sidebar */}
+      <AICopilotSidebar isOpen={aiCopilotOpen} onClose={() => setAiCopilotOpen(false)} />
     </div>
   );
 }

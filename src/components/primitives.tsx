@@ -8,7 +8,7 @@ export function Panel({
   ...rest
 }: { children: ReactNode; className?: string } & React.HTMLAttributes<HTMLDivElement>) {
   return (
-    <div className={cn("panel p-5", className)} {...rest}>
+    <div className={cn("panel p-5 transition-all duration-200 hover:shadow-panel-hover", className)} {...rest}>
       {children}
     </div>
   );
@@ -29,9 +29,9 @@ export function SectionHeading({
     <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
       <div>
         {eyebrow && <p className="text-eyebrow">{eyebrow}</p>}
-        <h2 className="font-display text-lg font-semibold text-foreground">{title}</h2>
+        <h2 className="font-display text-lg font-bold text-foreground tracking-tight">{title}</h2>
         {description && (
-          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{description}</p>
+          <p className="mt-1 max-w-2xl text-sm text-muted-foreground leading-relaxed">{description}</p>
         )}
       </div>
       {right}
@@ -56,13 +56,21 @@ export function Metric({
     danger: "text-destructive",
     success: "text-success",
   }[tone];
+
+  const toneBg = {
+    default: "border-border/60",
+    primary: "border-primary/30 bg-primary/5",
+    danger: "border-destructive/30 bg-destructive/5",
+    success: "border-success/30 bg-success/5",
+  }[tone];
+
   return (
-    <Panel className="p-4">
-      <p className="text-eyebrow">{label}</p>
-      <p className={cn("mt-2 font-display text-2xl font-semibold tabular-nums", toneClass)}>
+    <Panel className={cn("p-4.5 relative overflow-hidden group", toneBg)}>
+      <p className="text-eyebrow text-[10px]">{label}</p>
+      <p className={cn("mt-2 font-display text-2xl sm:text-3xl font-bold tabular-nums tracking-tight transition-transform group-hover:scale-[1.02]", toneClass)}>
         {value}
       </p>
-      {sub && <p className="mt-1 text-xs text-muted-foreground">{sub}</p>}
+      {sub && <p className="mt-1 text-xs text-muted-foreground font-medium">{sub}</p>}
     </Panel>
   );
 }
@@ -78,16 +86,16 @@ export function Pill({
 }) {
   const tones = {
     muted: "bg-muted text-muted-foreground border-border",
-    primary: "bg-primary/15 text-primary border-primary/30",
-    accent: "bg-accent/15 text-accent border-accent/30",
-    success: "bg-success/15 text-success border-success/30",
-    danger: "bg-destructive/15 text-destructive border-destructive/30",
-    warning: "bg-warning/15 text-warning border-warning/30",
+    primary: "bg-primary/15 text-primary border-primary/30 font-medium",
+    accent: "bg-accent/15 text-accent border-accent/30 font-medium",
+    success: "bg-success/15 text-success border-success/30 font-medium",
+    danger: "bg-destructive/15 text-destructive border-destructive/30 font-medium",
+    warning: "bg-warning/15 text-warning border-warning/30 font-medium",
   } as const;
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-widest",
+        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-widest transition-transform hover:scale-105",
         tones[tone],
         className,
       )}
@@ -111,10 +119,10 @@ export function UtilizationBar({ pct }: { pct: number }) {
             : "bg-success";
   return (
     <div className="flex items-center gap-3">
-      <div className="h-1.5 w-28 overflow-hidden rounded-full bg-muted">
-        <div className={cn("h-full rounded-full", tone)} style={{ width: `${Math.min(pct, 100)}%` }} />
+      <div className="h-2 w-28 overflow-hidden rounded-full bg-muted shadow-inner">
+        <div className={cn("h-full rounded-full transition-all duration-500", tone)} style={{ width: `${Math.min(pct, 100)}%` }} />
       </div>
-      <span className="w-28 shrink-0 font-mono text-[11px] text-muted-foreground">
+      <span className="w-28 shrink-0 font-mono text-[11px] text-muted-foreground font-medium">
         {pct.toFixed(1)}% · {band}
       </span>
     </div>
@@ -124,11 +132,11 @@ export function UtilizationBar({ pct }: { pct: number }) {
 export function AgentBubble({ children, label = "AI PM Agent" }: { children: ReactNode; label?: string }) {
   return (
     <div className="flex gap-3">
-      <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md bg-primary/15 font-mono text-[10px] font-bold text-primary">
+      <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-primary/80 font-mono text-xs font-bold text-primary-foreground shadow-sm">
         AI
       </span>
-      <div className="min-w-0 flex-1 rounded-lg rounded-tl-none border border-border bg-elevated p-3.5">
-        <p className="text-eyebrow mb-1.5">{label}</p>
+      <div className="min-w-0 flex-1 rounded-xl rounded-tl-none border border-primary/20 bg-elevated/80 backdrop-blur-sm p-4 shadow-sm">
+        <p className="text-eyebrow mb-1.5 font-semibold text-primary">{label}</p>
         <div className="space-y-2 text-sm leading-relaxed text-foreground">{children}</div>
       </div>
     </div>
@@ -138,7 +146,7 @@ export function AgentBubble({ children, label = "AI PM Agent" }: { children: Rea
 export function UserBubble({ children, who }: { children: ReactNode; who: string }) {
   return (
     <div className="flex justify-end gap-3">
-      <div className="max-w-[80%] rounded-lg rounded-tr-none border border-primary/25 bg-primary/10 p-3.5">
+      <div className="max-w-[80%] rounded-xl rounded-tr-none border border-primary/30 bg-primary/10 p-4 shadow-sm">
         <p className="text-eyebrow mb-1.5">{who}</p>
         <div className="text-sm leading-relaxed text-foreground">{children}</div>
       </div>
@@ -162,14 +170,14 @@ export function OptionChoice({
       type="button"
       onClick={onClick}
       className={cn(
-        "w-full rounded-lg border p-3 text-left transition-colors",
+        "w-full rounded-xl border p-3.5 text-left transition-all duration-150 transform active:scale-[0.99]",
         selected
-          ? "border-primary bg-primary/10"
+          ? "border-primary bg-primary/15 shadow-sm ring-1 ring-primary/40"
           : "border-border bg-card hover:border-primary/40 hover:bg-elevated",
       )}
     >
-      <span className="block text-sm font-medium text-foreground">{label}</span>
-      {detail && <span className="mt-0.5 block text-xs text-muted-foreground">{detail}</span>}
+      <span className="block text-sm font-semibold text-foreground">{label}</span>
+      {detail && <span className="mt-1 block text-xs text-muted-foreground leading-relaxed">{detail}</span>}
     </button>
   );
 }

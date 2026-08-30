@@ -1,0 +1,61 @@
+const mongoose = require("mongoose");
+
+const userSchema = new mongoose.Schema(
+  {
+    _id: { type: String, required: true }, // Firebase UID or unique string ID
+    email: {
+      type: String,
+      required: true,
+      unique: true,
+      lowercase: true,
+      trim: true,
+      index: true,
+    },
+    full_name: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    role_title: {
+      type: String,
+      default: "Contributor",
+      trim: true,
+    },
+    user_type: {
+      type: String,
+      enum: ["pm", "employee"],
+      required: true,
+      default: "employee",
+      index: true,
+    },
+    status: {
+      type: String,
+      enum: ["active", "inactive"],
+      default: "active",
+      index: true,
+    },
+    photo_url: {
+      type: String,
+      default: "",
+    },
+    last_login_at: {
+      type: Date,
+      default: Date.now,
+    },
+    session_version: {
+      type: Number,
+      default: 1,
+    },
+  },
+  {
+    timestamps: { createdAt: "created_at", updatedAt: "updated_at" },
+  }
+);
+
+userSchema.methods.toJSON = function () {
+  const obj = this.toObject();
+  obj.id = obj._id;
+  return obj;
+};
+
+module.exports = mongoose.model("User", userSchema);
