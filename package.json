@@ -2,6 +2,9 @@
   "name": "autonomous-project-pilot",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
     "dev": "vite",
     "server": "node server/index.js",
