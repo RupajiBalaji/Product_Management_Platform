@@ -121,21 +121,31 @@ app.get("/api/health", (req, res) => {
 // Serve Static Frontend in Production (Render / Unified Deployment)
 const path = require("path");
 const fs = require("fs");
-const distPath = path.join(__dirname, "../dist");
+const distPath = path.resolve(process.cwd(), "dist");
+
+console.log(`📁 [Static Files] Serving frontend from: ${distPath} (Exists: ${fs.existsSync(distPath)})`);
 
 if (fs.existsSync(distPath)) {
   app.use(express.static(distPath));
-  app.get("*", (req, res, next) => {
-    if (req.originalUrl.startsWith("/api/")) return next();
-    res.sendFile(path.join(distPath, "index.html"));
-  });
 }
 
-// 404 Handler for API routes
+// Fallback for SPA client-side routing (Express 5 compatible)
+app.use((req, res, next) => {
+  if (req.originalUrl.startsWith("/api/")) {
+    return next();
+  }
+  const indexPath = path.join(distPath, "index.html");
+  if (fs.existsSync(indexPath)) {
+    return res.sendFile(indexPath);
+  }
+  next();
+});
+
+// 404 Handler for unhandled API and missing static routes
 app.use((req, res) => {
   res.status(404).json({
     success: false,
-    error: `API route not found: ${req.method} ${req.originalUrl}`,
+    error: `Route not found: ${req.method} ${req.originalUrl}`,
     code: "NOT_FOUND",
   });
 });
