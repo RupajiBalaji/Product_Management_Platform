@@ -8,9 +8,10 @@
   "scripts": {
     "dev": "vite",
     "server": "node server/index.js",
-    "start": "node server/index.js",
     "build": "vite build",
     "render-build": "npm run build",
+    "prestart": "node -e \"const fs = require('fs'); if (!fs.existsSync('dist/index.html')) { const { execSync } = require('child_process'); console.log('⚡ dist not found, compiling frontend automatically with vite build...'); execSync('npm run build', { stdio: 'inherit' }); }\"",
+    "start": "node server/index.js",
     "seed": "node server/seed.js",
     "preview": "vite preview",
     "lint": "eslint .",

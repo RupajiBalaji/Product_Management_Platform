@@ -12,9 +12,8 @@ let isConnected = false;
 const DB_OPTIONS = {
   maxPoolSize: 25,
   minPoolSize: 5,
-  serverSelectionTimeoutMS: 5000,
+  serverSelectionTimeoutMS: 10000,
   socketTimeoutMS: 45000,
-  family: 4, // Use IPv4
 };
 
 async function connectDB() {
