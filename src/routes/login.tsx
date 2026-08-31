@@ -8,15 +8,11 @@ import {
   User,
   Briefcase,
   Mail,
-  UserCheck,
   Shield,
   Code2,
-  CheckCircle2,
-  ArrowRight,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
-import { getAllEmployees } from "@/lib/db";
-import type { UserProfile, UserType } from "@/lib/types";
+import type { UserType } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/login")({
@@ -28,7 +24,6 @@ export function LoginPage() {
     loginWithEmail,
     registerWithEmail,
     loginWithGoogle,
-    switchUser,
     userProfile,
     loading: authLoading,
   } = useAuth();
@@ -42,11 +37,6 @@ export function LoginPage() {
   const [selectedUserType, setSelectedUserType] = useState<UserType>("pm");
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
-  const [employees, setEmployees] = useState<UserProfile[]>([]);
-
-  useEffect(() => {
-    getAllEmployees().then(setEmployees);
-  }, []);
 
   useEffect(() => {
     if (userProfile) {
@@ -103,18 +93,6 @@ export function LoginPage() {
       );
     } finally {
       setGoogleLoading(false);
-    }
-  };
-
-  const handleQuickSwitch = async (userId: string, name: string) => {
-    setLoading(true);
-    try {
-      await switchUser(userId);
-      toast.success(`Signed in as ${name}!`);
-    } catch (err: any) {
-      toast.error(err.message || "Failed to switch user");
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -206,7 +184,7 @@ export function LoginPage() {
           <form onSubmit={handleSubmit} className="space-y-3.5">
             {mode === "signup" && (
               <>
-                {/* 1. Role Selection (Manager vs Developer) */}
+                {/* Role Selection (Manager vs Developer) */}
                 <div>
                   <label className="text-eyebrow mb-1.5 block font-bold text-foreground">
                     Select Your Account Role
@@ -329,56 +307,10 @@ export function LoginPage() {
                 : `Create Account (${selectedUserType === "pm" ? "Project Manager" : "Developer"})`}
             </button>
           </form>
-
-          {/* Quick Dual-Role One-Click Logins */}
-          <div className="mt-6 pt-5 border-t border-border/80">
-            <div className="flex items-center gap-1.5 mb-2.5">
-              <UserCheck className="size-3.5 text-primary" />
-              <p className="text-eyebrow text-[9px] text-muted-foreground font-semibold">
-                Direct Role Login (Opens Respective Dashboard)
-              </p>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => handleQuickSwitch("pm_default_admin", "Project Manager")}
-                disabled={loading}
-                className="flex items-center justify-between gap-2 rounded-xl border border-primary/40 bg-primary/10 py-2.5 px-3.5 text-xs font-bold text-primary hover:bg-primary/20 transition-all cursor-pointer shadow-xs group"
-              >
-                <div className="flex items-center gap-2">
-                  <Shield className="size-4 shrink-0" />
-                  <div className="text-left">
-                    <span className="block font-bold">Log in as Manager</span>
-                    <span className="block text-[9px] text-muted-foreground font-normal">PM Dashboard & Matrix</span>
-                  </div>
-                </div>
-                <ArrowRight className="size-3.5 group-hover:translate-x-0.5 transition-transform" />
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  const devId = employees.find((e) => e.user_type === "employee")?.id || "emp_1";
-                  handleQuickSwitch(devId, "Developer");
-                }}
-                disabled={loading}
-                className="flex items-center justify-between gap-2 rounded-xl border border-emerald-500/40 bg-emerald-500/10 py-2.5 px-3.5 text-xs font-bold text-emerald-400 hover:bg-emerald-500/20 transition-all cursor-pointer shadow-xs group"
-              >
-                <div className="flex items-center gap-2">
-                  <Code2 className="size-4 shrink-0" />
-                  <div className="text-left">
-                    <span className="block font-bold">Log in as Developer</span>
-                    <span className="block text-[9px] text-muted-foreground font-normal">Tasks & Work Logging</span>
-                  </div>
-                </div>
-                <ArrowRight className="size-3.5 group-hover:translate-x-0.5 transition-transform" />
-              </button>
-            </div>
-          </div>
         </div>
 
         <p className="text-center text-xs text-muted-foreground mt-4">
-          Autonomous PM · Dual-Role Role-Based Access Control Active
+          Autonomous PM · Dual-Role Workforce Management
         </p>
       </div>
     </div>
