@@ -1,10 +1,23 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
-import { Loader2, Lock, Sparkles, User, Briefcase, Mail, UserCheck, Shield } from "lucide-react";
+import {
+  Loader2,
+  Lock,
+  Sparkles,
+  User,
+  Briefcase,
+  Mail,
+  UserCheck,
+  Shield,
+  Code2,
+  CheckCircle2,
+  ArrowRight,
+} from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { getAllEmployees } from "@/lib/db";
-import type { UserProfile } from "@/lib/types";
+import type { UserProfile, UserType } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/login")({
   component: LoginPage,
@@ -17,7 +30,6 @@ export function LoginPage() {
     loginWithGoogle,
     switchUser,
     userProfile,
-    firebaseUser,
     loading: authLoading,
   } = useAuth();
   const navigate = useNavigate();
@@ -27,6 +39,7 @@ export function LoginPage() {
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [roleTitle, setRoleTitle] = useState("");
+  const [selectedUserType, setSelectedUserType] = useState<UserType>("pm");
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [employees, setEmployees] = useState<UserProfile[]>([]);
@@ -56,12 +69,22 @@ export function LoginPage() {
           setLoading(false);
           return;
         }
-        await registerWithEmail(email, password, fullName, roleTitle || "Project Manager");
-        toast.success("Account created successfully!");
+        const defaultRole = selectedUserType === "pm" ? "Project Manager" : "Software Developer";
+        await registerWithEmail(
+          email,
+          password,
+          fullName,
+          roleTitle || defaultRole,
+          selectedUserType
+        );
+        toast.success(`Account created as ${selectedUserType === "pm" ? "Project Manager" : "Developer"}!`);
       }
     } catch (err: any) {
       console.error(err);
-      toast.error(err.message?.replace("Firebase: ", "") || "Authentication failed. Make sure Email/Password is enabled in Firebase.");
+      toast.error(
+        err.message?.replace("Firebase: ", "") ||
+          "Authentication failed. Please verify credentials."
+      );
     } finally {
       setLoading(false);
     }
@@ -74,7 +97,10 @@ export function LoginPage() {
       toast.success("Signed in with Google!");
     } catch (err: any) {
       console.error(err);
-      toast.error(err.message?.replace("Firebase: ", "") || "Google Sign-In failed. Make sure Google Auth is enabled in Firebase Console.");
+      toast.error(
+        err.message?.replace("Firebase: ", "") ||
+          "Google Sign-In failed. Make sure Google Auth is authorized in Firebase."
+      );
     } finally {
       setGoogleLoading(false);
     }
@@ -105,7 +131,7 @@ export function LoginPage() {
             <img src="/favicon.svg" alt="Logo" className="size-11 rounded-2xl shadow-glow" />
             <div className="text-left">
               <h1 className="font-display text-2xl font-extrabold text-foreground tracking-tight">Autonomous PM</h1>
-              <p className="text-eyebrow text-[10px]">Production AI & Workforce Management</p>
+              <p className="text-eyebrow text-[10px]">Dual-Role Workforce & AI Management Platform</p>
             </div>
           </div>
         </div>
@@ -177,9 +203,55 @@ export function LoginPage() {
             <div className="flex-grow border-t border-border"></div>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-3">
+          <form onSubmit={handleSubmit} className="space-y-3.5">
             {mode === "signup" && (
               <>
+                {/* 1. Role Selection (Manager vs Developer) */}
+                <div>
+                  <label className="text-eyebrow mb-1.5 block font-bold text-foreground">
+                    Select Your Account Role
+                  </label>
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedUserType("pm")}
+                      className={cn(
+                        "flex flex-col items-start p-3 rounded-xl border text-left transition-all cursor-pointer",
+                        selectedUserType === "pm"
+                          ? "border-primary bg-primary/15 text-primary shadow-xs ring-1 ring-primary"
+                          : "border-border bg-elevated/60 text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                      )}
+                    >
+                      <div className="flex items-center gap-1.5 font-bold text-xs">
+                        <Shield className="size-3.5" />
+                        <span>Project Manager</span>
+                      </div>
+                      <span className="text-[10px] text-muted-foreground mt-1 leading-tight">
+                        Create projects, assign tasks, view matrix & AI insights.
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setSelectedUserType("employee")}
+                      className={cn(
+                        "flex flex-col items-start p-3 rounded-xl border text-left transition-all cursor-pointer",
+                        selectedUserType === "employee"
+                          ? "border-emerald-500 bg-emerald-500/15 text-emerald-400 shadow-xs ring-1 ring-emerald-500"
+                          : "border-border bg-elevated/60 text-muted-foreground hover:border-emerald-500/40 hover:text-foreground"
+                      )}
+                    >
+                      <div className="flex items-center gap-1.5 font-bold text-xs">
+                        <Code2 className="size-3.5" />
+                        <span>Developer</span>
+                      </div>
+                      <span className="text-[10px] text-muted-foreground mt-1 leading-tight">
+                        Assigned deliverables, focus on priority, log daily work.
+                      </span>
+                    </button>
+                  </div>
+                </div>
+
                 <div>
                   <label className="text-eyebrow mb-1 block">Full Name</label>
                   <div className="relative">
@@ -188,7 +260,7 @@ export function LoginPage() {
                       type="text"
                       value={fullName}
                       onChange={(e) => setFullName(e.target.value)}
-                      placeholder="e.g. Arjun Sharma"
+                      placeholder={selectedUserType === "pm" ? "e.g. Arjun Sharma" : "e.g. Rahul Patel"}
                       required
                       className="w-full rounded-xl border border-input bg-elevated pl-9 pr-3.5 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary transition-all"
                     />
@@ -196,14 +268,14 @@ export function LoginPage() {
                 </div>
 
                 <div>
-                  <label className="text-eyebrow mb-1 block">Role Title</label>
+                  <label className="text-eyebrow mb-1 block">Custom Role Title (Optional)</label>
                   <div className="relative">
                     <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
                     <input
                       type="text"
                       value={roleTitle}
                       onChange={(e) => setRoleTitle(e.target.value)}
-                      placeholder="e.g. Senior Project Manager"
+                      placeholder={selectedUserType === "pm" ? "e.g. Senior Project Manager" : "e.g. Full-Stack Developer"}
                       className="w-full rounded-xl border border-input bg-elevated pl-9 pr-3.5 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary transition-all"
                     />
                   </div>
@@ -245,7 +317,7 @@ export function LoginPage() {
             <button
               type="submit"
               disabled={loading || googleLoading || authLoading}
-              className="w-full flex items-center justify-center gap-2 rounded-xl bg-primary py-2.5 text-sm font-bold text-primary-foreground shadow-glow hover:bg-primary/90 disabled:opacity-60 transition-all mt-2 cursor-pointer"
+              className="w-full flex items-center justify-center gap-2 rounded-xl bg-primary py-2.5 text-sm font-bold text-primary-foreground shadow-glow hover:bg-primary/90 disabled:opacity-60 transition-all mt-3 cursor-pointer"
             >
               {loading ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
               {loading
@@ -254,46 +326,59 @@ export function LoginPage() {
                   : "Creating account…"
                 : mode === "signin"
                 ? "Sign In"
-                : "Create Account"}
+                : `Create Account (${selectedUserType === "pm" ? "Project Manager" : "Developer"})`}
             </button>
           </form>
 
-          {/* Quick Multi-User Test Switcher (Fast Persona Login) */}
-          <div className="mt-5 pt-4 border-t border-border/80">
+          {/* Quick Dual-Role One-Click Logins */}
+          <div className="mt-6 pt-5 border-t border-border/80">
             <div className="flex items-center gap-1.5 mb-2.5">
               <UserCheck className="size-3.5 text-primary" />
               <p className="text-eyebrow text-[9px] text-muted-foreground font-semibold">
-                Quick Multi-User Session Login (MongoDB)
+                Direct Role Login (Opens Respective Dashboard)
               </p>
             </div>
-            <div className="grid grid-cols-2 gap-1.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <button
                 type="button"
                 onClick={() => handleQuickSwitch("pm_default_admin", "Project Manager")}
                 disabled={loading}
-                className="flex items-center justify-center gap-1 rounded-lg border border-primary/30 bg-primary/10 py-1.5 px-2 text-[11px] font-semibold text-primary hover:bg-primary/20 transition-colors cursor-pointer"
+                className="flex items-center justify-between gap-2 rounded-xl border border-primary/40 bg-primary/10 py-2.5 px-3.5 text-xs font-bold text-primary hover:bg-primary/20 transition-all cursor-pointer shadow-xs group"
               >
-                <Shield className="size-3" />
-                <span>Log in as PM</span>
+                <div className="flex items-center gap-2">
+                  <Shield className="size-4 shrink-0" />
+                  <div className="text-left">
+                    <span className="block font-bold">Log in as Manager</span>
+                    <span className="block text-[9px] text-muted-foreground font-normal">PM Dashboard & Matrix</span>
+                  </div>
+                </div>
+                <ArrowRight className="size-3.5 group-hover:translate-x-0.5 transition-transform" />
               </button>
-              {employees.slice(0, 3).map((emp) => (
-                <button
-                  key={emp.id}
-                  type="button"
-                  onClick={() => handleQuickSwitch(emp.id, emp.full_name)}
-                  disabled={loading}
-                  className="flex items-center justify-center gap-1 rounded-lg border border-border bg-card py-1.5 px-2 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-elevated transition-colors cursor-pointer truncate"
-                  title={`Sign in as ${emp.full_name} (${emp.role_title})`}
-                >
-                  <span className="truncate">Dev: {emp.full_name.split(" ")[0]}</span>
-                </button>
-              ))}
+
+              <button
+                type="button"
+                onClick={() => {
+                  const devId = employees.find((e) => e.user_type === "employee")?.id || "emp_1";
+                  handleQuickSwitch(devId, "Developer");
+                }}
+                disabled={loading}
+                className="flex items-center justify-between gap-2 rounded-xl border border-emerald-500/40 bg-emerald-500/10 py-2.5 px-3.5 text-xs font-bold text-emerald-400 hover:bg-emerald-500/20 transition-all cursor-pointer shadow-xs group"
+              >
+                <div className="flex items-center gap-2">
+                  <Code2 className="size-4 shrink-0" />
+                  <div className="text-left">
+                    <span className="block font-bold">Log in as Developer</span>
+                    <span className="block text-[9px] text-muted-foreground font-normal">Tasks & Work Logging</span>
+                  </div>
+                </div>
+                <ArrowRight className="size-3.5 group-hover:translate-x-0.5 transition-transform" />
+              </button>
             </div>
           </div>
         </div>
 
         <p className="text-center text-xs text-muted-foreground mt-4">
-          Autonomous PM · Production Session Cookies & MongoDB Multi-User Active
+          Autonomous PM · Dual-Role Role-Based Access Control Active
         </p>
       </div>
     </div>

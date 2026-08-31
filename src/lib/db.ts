@@ -54,6 +54,7 @@ export async function createServerSession(userData: {
   full_name?: string;
   role_title?: string;
   photo_url?: string;
+  user_type?: "pm" | "employee";
 }): Promise<UserProfile> {
   const data = await apiFetch("/api/auth/session", {
     method: "POST",

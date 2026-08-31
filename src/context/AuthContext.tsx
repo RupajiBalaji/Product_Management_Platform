@@ -47,15 +47,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     email: string,
     name?: string,
     roleTitle?: string,
-    photoUrl?: string
+    photoUrl?: string,
+    userType?: UserType
   ) => {
     try {
       const profile = await createServerSession({
         uid,
         email,
         full_name: name || email.split("@")[0] || "User",
-        role_title: roleTitle || "Team Member",
+        role_title: roleTitle || (userType === "pm" ? "Project Manager" : "Developer / Contributor"),
         photo_url: photoUrl || "",
+        user_type: userType,
       });
       setUserProfile(profile);
     } catch (err) {
@@ -65,8 +67,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         id: uid,
         email,
         full_name: name || email.split("@")[0] || "User",
-        role_title: roleTitle || "Team Member",
-        user_type: "pm",
+        role_title: roleTitle || (userType === "pm" ? "Project Manager" : "Developer / Contributor"),
+        user_type: userType || "pm",
         status: "active",
         created_at: new Date().toISOString(),
       });
@@ -114,10 +116,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     email: string,
     pass: string,
     name: string,
-    roleTitle: string = "Project Lead"
+    roleTitle: string = "Project Manager",
+    userType: UserType = "pm"
   ) => {
     const cred = await createUserWithEmailAndPassword(auth, email, pass);
-    await establishSession(cred.user.uid, cred.user.email || email, name, roleTitle);
+    await establishSession(cred.user.uid, cred.user.email || email, name, roleTitle, undefined, userType);
   };
 
   const loginWithGoogle = async () => {

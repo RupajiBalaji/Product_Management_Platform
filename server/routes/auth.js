@@ -41,7 +41,7 @@ function issueSessionCookie(res, user) {
 // Create or sync session on login
 router.post("/session", async (req, res) => {
   try {
-    const { uid, email, full_name, role_title, photo_url } = req.body;
+    const { uid, email, full_name, role_title, photo_url, user_type } = req.body;
     if (!uid || !email) {
       return res.status(400).json({ success: false, error: "uid and email are required" });
     }
@@ -53,8 +53,8 @@ router.post("/session", async (req, res) => {
         _id: uid,
         email: email.toLowerCase(),
         full_name: full_name || email.split("@")[0],
-        role_title: role_title || (count === 0 ? "Project Manager" : "Contributor"),
-        user_type: count === 0 ? "pm" : "employee",
+        role_title: role_title || (user_type === "pm" || count === 0 ? "Project Manager" : "Developer / Contributor"),
+        user_type: user_type || (count === 0 ? "pm" : "employee"),
         photo_url: photo_url || "",
         status: "active",
         last_login_at: new Date(),
@@ -64,6 +64,8 @@ router.post("/session", async (req, res) => {
       user.last_login_at = new Date();
       if (full_name) user.full_name = full_name;
       if (photo_url) user.photo_url = photo_url;
+      if (role_title) user.role_title = role_title;
+      if (user_type) user.user_type = user_type;
       await user.save();
     }
 
