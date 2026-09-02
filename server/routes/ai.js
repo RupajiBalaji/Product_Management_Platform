@@ -11,23 +11,17 @@ const { verifyToken } = require("../middleware/auth");
 // Only move to the next (slower) model tier when ALL keys are exhausted on current model.
 // This maximises free-tier quota across all keys before falling back to heavier models.
 //
-// Tier Order (free-tier, fastest → slowest):
-//   1. gemini-2.0-flash-lite   ← try all 6 keys here first
-//   2. gemini-1.5-flash-8b     ← if all keys quota out above
-//   3. gemini-2.5-flash-lite   ← if all keys quota out above
-//   4. gemini-2.0-flash        ← ...
-//   5. gemini-1.5-flash        ← ...
-//   6. gemini-2.5-flash        ← ...
-//   7. gemini-2.5-pro          ← last resort deep reasoning
+// Models verified from API — ordered fastest/lightest → slowest/heaviest:
 
 const MODEL_TIERS = [
-  "gemini-2.0-flash-lite",   // Fastest, highest free-tier RPM
-  "gemini-1.5-flash-8b",     // Ultra-compact 8B, blazing speed
-  "gemini-2.5-flash-lite",   // Lightweight high-throughput
-  "gemini-2.0-flash",        // Next-gen multimodal flash
-  "gemini-1.5-flash",        // Stable reliable flash
-  "gemini-2.5-flash",        // General high-performance flash
-  "gemini-2.5-pro",          // Deep reasoning (last resort)
+  "gemini-3.5-flash-lite",      // Fastest & lightest — highest free RPM
+  "gemini-3.1-flash-lite",      // Next-gen ultra-efficient
+  "gemini-2.5-flash-lite",      // Lightweight high-throughput
+  "gemini-flash-lite-latest",   // Latest flash-lite alias
+  "gemini-3.5-flash",           // Fast capable flash
+  "gemini-3.1-flash-lite-image",// Flash lite variant
+  "gemini-2.5-flash",           // Reliable mid-tier flash
+  "gemini-2.5-pro",             // Deep reasoning (last resort)
 ];
 
 // All API keys read exclusively from server environment — never hardcoded
