@@ -5,131 +5,162 @@ const { Project, Task, DailyLog } = require("../models/models");
 const User = require("../models/User");
 const { verifyToken } = require("../middleware/auth");
 
-// ─── Rotating Model & Multi-Key Quota Failover Engine ──────────────────────────
+// ─── Rotating Model + Multi-Key Quota Failover Engine ────────────────────────
+//
+// Strategy: For each model tier (fastest → slowest), try EVERY API key.
+// Only move to the next (slower) model tier when ALL keys are exhausted on current model.
+// This maximises free-tier quota across all keys before falling back to heavier models.
+//
+// Tier Order (free-tier, fastest → slowest):
+//   1. gemini-2.0-flash-lite   ← try all 6 keys here first
+//   2. gemini-1.5-flash-8b     ← if all keys quota out above
+//   3. gemini-2.5-flash-lite   ← if all keys quota out above
+//   4. gemini-2.0-flash        ← ...
+//   5. gemini-1.5-flash        ← ...
+//   6. gemini-2.5-flash        ← ...
+//   7. gemini-2.5-pro          ← last resort deep reasoning
 
-const RAW_MODEL_POOL = [
-  process.env.GEMINI_MODEL || "gemini-2.0-flash-lite",
-  "gemini-2.0-flash-lite",     // Ultra-fast, minimal latency, highest RPM quota
-  "gemini-3.1-flash-lite",     // Next-gen high-efficiency model
-  "gemini-2.5-flash-lite",     // High-speed lightweight model
-  "gemini-1.5-flash-8b",       // 8B parameter ultra-compact blazing fast model
-  "gemini-2.0-flash",          // Fast multimodal flagship
-  "gemini-2.5-flash",          // General performance flash model
-  "gemini-1.5-flash",          // Stable fallback flash model
-  "gemini-2.5-pro",            // Deep reasoning fallback
+const MODEL_TIERS = [
+  "gemini-2.0-flash-lite",   // Fastest, highest free-tier RPM
+  "gemini-1.5-flash-8b",     // Ultra-compact 8B, blazing speed
+  "gemini-2.5-flash-lite",   // Lightweight high-throughput
+  "gemini-2.0-flash",        // Next-gen multimodal flash
+  "gemini-1.5-flash",        // Stable reliable flash
+  "gemini-2.5-flash",        // General high-performance flash
+  "gemini-2.5-pro",          // Deep reasoning (last resort)
 ];
 
-// Deduplicate model list while preserving priority order
-const ROTATING_MODEL_POOL = [...new Set(RAW_MODEL_POOL)];
-
-// Reads exclusively from server environment variables (Render Environment Variables / local .env)
-const rawKeys = (process.env.GEMINI_API_KEY || "")
+// All API keys read exclusively from server environment — never hardcoded
+// Format in Render / .env: GEMINI_API_KEY=key1,key2,key3,key4,key5,key6
+const API_KEYS = (process.env.GEMINI_API_KEY || "")
   .split(",")
   .map((k) => k.trim())
-  .filter(Boolean);
-const API_KEYS = rawKeys;
+  .filter((k) => k.startsWith("AIzaSy")); // Only accept valid Gemini key format
 
-// Cache of GoogleGenAI client instances per API key
-const clientCache = new Map();
-function getGenAIClient(apiKey) {
-  if (!clientCache.has(apiKey)) {
-    clientCache.set(apiKey, new GoogleGenAI({ apiKey }));
+// Cache GoogleGenAI client instances per key (one instance per key, reused)
+const _clientCache = new Map();
+function getClient(apiKey) {
+  if (!_clientCache.has(apiKey)) {
+    _clientCache.set(apiKey, new GoogleGenAI({ apiKey }));
   }
-  return clientCache.get(apiKey);
+  return _clientCache.get(apiKey);
 }
 
-// Rotation state & cooldown memory
-let currentModelIndex = 0;
-let currentKeyIndex = 0;
-const modelCooldowns = new Map(); // modelName -> timestamp (ms) when cooldown ends
-const COOLDOWN_DURATION_MS = 60 * 1000; // 60 seconds cooldown after 429 quota exhaustion
+// Per-model-per-key cooldown tracking after 429 quota exhaustion
+// Key: "modelName::keyIndex"  Value: timestamp (ms) when cooldown expires
+const _cooldowns = new Map();
+const COOLDOWN_MS = 65 * 1000; // 65 second cooldown matches Google's 1-min quota window
 
-function isQuotaExhaustedError(err) {
+function isOnCooldown(model, keyIdx) {
+  return Date.now() < (_cooldowns.get(`${model}::${keyIdx}`) || 0);
+}
+
+function setCooldown(model, keyIdx) {
+  _cooldowns.set(`${model}::${keyIdx}`, Date.now() + COOLDOWN_MS);
+  const exp = new Date(Date.now() + COOLDOWN_MS).toLocaleTimeString();
+  console.warn(`⏳ [AI Engine] Key #${keyIdx + 1} quota hit on "${model}". Cooling down until ${exp}.`);
+}
+
+function isQuotaError(err) {
   const msg = (err?.message || String(err)).toLowerCase();
-  const status = err?.status || err?.code || 0;
   return (
-    status === 429 ||
+    (err?.status || err?.code) === 429 ||
     msg.includes("429") ||
     msg.includes("resource_exhausted") ||
     msg.includes("quota") ||
     msg.includes("rate limit") ||
-    msg.includes("too many requests") ||
-    msg.includes("exhausted")
+    msg.includes("too many requests")
   );
 }
 
-// Robust generator with rotating loop: when one model's quota is done, switch to next model
+// ─── Core nested rotation function ───────────────────────────────────────────
 async function generateWithRotatingModels(prompt) {
   if (!API_KEYS || API_KEYS.length === 0) {
     throw new Error(
-      "GEMINI_API_KEY is not configured in the server environment. Please add GEMINI_API_KEY in your Render Dashboard Environment settings (or local .env file)."
+      "No valid GEMINI_API_KEY found in server environment. Add comma-separated keys to GEMINI_API_KEY in Render Environment Variables."
     );
   }
 
-  const poolLength = ROTATING_MODEL_POOL.length;
-  const now = Date.now();
   let lastErr = null;
 
-  // Attempt across the rotating pool starting from currentModelIndex
-  for (let attempt = 0; attempt < poolLength; attempt++) {
-    const candidateIdx = (currentModelIndex + attempt) % poolLength;
-    const modelName = ROTATING_MODEL_POOL[candidateIdx];
+  // Outer loop: iterate model tiers from fastest to slowest
+  for (const model of MODEL_TIERS) {
+    let allKeysExhausted = true; // assume exhausted until a key succeeds or isn't on cooldown
 
-    // Check if candidate model is currently in quota cooldown
-    const cooldownExpiry = modelCooldowns.get(modelName) || 0;
-    if (now < cooldownExpiry && attempt < poolLength - 1) {
-      const remainingSec = Math.ceil((cooldownExpiry - now) / 1000);
-      console.log(`⏳ [Gemini Engine] Skipping "${modelName}" (quota cooldown active for ${remainingSec}s)...`);
-      continue;
+    // Inner loop: try every API key with this model
+    for (let keyIdx = 0; keyIdx < API_KEYS.length; keyIdx++) {
+      if (isOnCooldown(model, keyIdx)) {
+        // This key is cooling down on this model — skip it
+        console.log(`⏭️  [AI Engine] Skipping key #${keyIdx + 1} on "${model}" (quota cooldown active)`);
+        continue;
+      }
+
+      allKeysExhausted = false; // at least one key is still available for this model
+
+      try {
+        console.log(`🤖 [AI Engine] Trying model="${model}" key=#${keyIdx + 1}/${API_KEYS.length}`);
+        const client = getClient(API_KEYS[keyIdx]);
+        const response = await client.models.generateContent({ model, contents: prompt });
+
+        if (response?.text) {
+          console.log(`✅ [AI Engine] Success — model="${model}" key=#${keyIdx + 1}`);
+          return response.text;
+        }
+      } catch (err) {
+        const msg = err?.message || String(err);
+
+        if (msg.includes("leaked") || msg.includes("PERMISSION_DENIED") || msg.includes("API_KEY_INVALID")) {
+          // This specific key is revoked/invalid — skip it permanently this session
+          console.error(`🚫 [AI Engine] Key #${keyIdx + 1} is invalid/revoked. Skipping.`);
+          setCooldown(model, keyIdx); // put on long cooldown so it's skipped
+          lastErr = err;
+          continue;
+        }
+
+        if (isQuotaError(err)) {
+          // Quota hit — cool down this key+model combo and try next key
+          setCooldown(model, keyIdx);
+          lastErr = err;
+          continue;
+        }
+
+        // Non-quota error (network, server error etc) — log and try next key
+        console.warn(`[AI Engine] Non-quota error on model="${model}" key=#${keyIdx + 1}: ${msg}`);
+        lastErr = err;
+      }
     }
 
-    const currentKey = API_KEYS[currentKeyIndex % API_KEYS.length];
-    const client = getGenAIClient(currentKey);
-
-    try {
-      console.log(`🤖 [Gemini Engine] Attempting request using model: "${modelName}" (key #${(currentKeyIndex % API_KEYS.length) + 1})...`);
-
-      const response = await client.models.generateContent({
-        model: modelName,
-        contents: prompt,
-      });
-
-      if (response && response.text) {
-        // Model succeeded: advance index for fair round-robin load distribution
-        currentModelIndex = (candidateIdx + 1) % poolLength;
-        // Clear any prior cooldown for this model
-        modelCooldowns.delete(modelName);
-        console.log(`✅ [Gemini Engine] Response generated successfully with "${modelName}". Next model queued.`);
-        return response.text;
-      }
-    } catch (err) {
-      const errMsg = err?.message || String(err);
-
-      if (errMsg.includes("leaked") || errMsg.includes("PERMISSION_DENIED")) {
-        throw new Error(
-          "Your Google Gemini API key was reported as leaked/revoked by Google. Please generate a new free API key at https://aistudio.google.com and set GEMINI_API_KEY in your .env file."
-        );
-      }
-
-      if (isQuotaExhaustedError(err)) {
-        // Mark model as quota-exhausted for 60 seconds
-        modelCooldowns.set(modelName, Date.now() + COOLDOWN_DURATION_MS);
-        console.warn(`⚠️ [Gemini Engine] Quota reached on model "${modelName}" (429/ResourceExhausted). Rotating to next model in loop...`);
-
-        // If multiple API keys exist, also rotate to next key
-        if (API_KEYS.length > 1) {
-          currentKeyIndex = (currentKeyIndex + 1) % API_KEYS.length;
-          console.log(`🔄 [Gemini Engine] Also rotating API key to key #${(currentKeyIndex % API_KEYS.length) + 1}`);
-        }
-      } else {
-        console.warn(`[Gemini Engine] Model "${modelName}" error:`, errMsg);
-      }
-
-      lastErr = err;
+    if (allKeysExhausted) {
+      // Every key is on cooldown for this model — move to next (slower) model tier
+      console.warn(`🔁 [AI Engine] All keys quota-exhausted on "${model}". Dropping to next model tier...`);
     }
   }
 
-  throw lastErr || new Error("All models in the rotating pool exhausted their quota or failed. Please retry shortly.");
+  throw lastErr || new Error(
+    "All model tiers and API keys are quota-exhausted. Please wait ~1 minute and retry."
+  );
+}
+
+// ─── Live pool status for inspection ─────────────────────────────────────────
+function getPoolStatus() {
+  const now = Date.now();
+  return MODEL_TIERS.map((model) => {
+    const keyStatuses = API_KEYS.map((_, idx) => {
+      const expiry = _cooldowns.get(`${model}::${idx}`) || 0;
+      const cooling = now < expiry;
+      return {
+        key: `key_${idx + 1}`,
+        status: cooling ? "cooling_down" : "ready",
+        cooldown_remaining_seconds: cooling ? Math.ceil((expiry - now) / 1000) : 0,
+      };
+    });
+    const allCooling = keyStatuses.every((k) => k.status === "cooling_down");
+    return {
+      model,
+      tier_status: allCooling ? "⚠️ all_keys_exhausted" : "✅ available",
+      keys: keyStatuses,
+    };
+  });
 }
 
 // Build comprehensive live platform knowledge base from MongoDB
@@ -328,26 +359,14 @@ Provide a crisp, executive summary formatted with bullet points:
   }
 });
 
-// Real-time inspection of rotating models pool & quota status
-router.get("/models-status", (req, res) => {
-  const now = Date.now();
-  const poolStatus = ROTATING_MODEL_POOL.map((model, idx) => {
-    const cooldownExpiry = modelCooldowns.get(model) || 0;
-    const isCoolingDown = now < cooldownExpiry;
-    return {
-      model,
-      is_current_target: idx === currentModelIndex,
-      status: isCoolingDown ? "cooling_down (quota exhausted)" : "healthy",
-      cooldown_remaining_seconds: isCoolingDown ? Math.ceil((cooldownExpiry - now) / 1000) : 0,
-    };
-  });
 
+// Real-time inspection of model tiers & per-key quota status
+router.get("/models-status", (req, res) => {
   res.json({
     success: true,
-    active_model: ROTATING_MODEL_POOL[currentModelIndex],
-    current_model_index: currentModelIndex,
     configured_keys_count: API_KEYS.length,
-    pool: poolStatus,
+    strategy: "model-first: exhaust all keys per tier before dropping to next tier",
+    tiers: getPoolStatus(),
   });
 });
 
