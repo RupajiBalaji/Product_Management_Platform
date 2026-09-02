@@ -51,9 +51,11 @@ export function AICopilotSidebar({ isOpen, onClose }: AICopilotSidebarProps) {
   const [contextData, setContextData] = useState<any>(null);
   const [expanded, setExpanded] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (isOpen) {
+      setTimeout(() => inputRef.current?.focus(), 50);
       getAIPlatformContext().then((data) => {
         if (data) setContextData(data);
       });
@@ -78,6 +80,8 @@ export function AICopilotSidebar({ isOpen, onClose }: AICopilotSidebarProps) {
     setMessages((prev) => [...prev, userMsg]);
     if (!questionText) setInput("");
     setLoading(true);
+    // Keep focus in input immediately so user never loses cursor
+    inputRef.current?.focus();
 
     try {
       const answer = await askAICopilot(q);
@@ -101,6 +105,7 @@ export function AICopilotSidebar({ isOpen, onClose }: AICopilotSidebarProps) {
       ]);
     } finally {
       setLoading(false);
+      setTimeout(() => inputRef.current?.focus(), 50);
     }
   };
 
@@ -254,12 +259,13 @@ export function AICopilotSidebar({ isOpen, onClose }: AICopilotSidebarProps) {
         {/* Input Bar */}
         <form onSubmit={(e) => { e.preventDefault(); handleSend(); }} className="border-t border-border p-4 flex gap-2 bg-card">
           <input
+            ref={inputRef}
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask about project durations, timelines, team load..."
+            placeholder={loading ? "Copilot is thinking..." : "Ask about project durations, timelines, team load..."}
             className="flex-1 rounded-xl border border-input bg-elevated px-3.5 py-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary transition-all"
-            disabled={loading}
+            autoFocus
           />
           <button
             type="submit"

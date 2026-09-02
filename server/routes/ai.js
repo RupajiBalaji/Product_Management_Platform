@@ -45,6 +45,12 @@ function getClient(apiKey) {
 const _cooldowns = new Map();
 const COOLDOWN_MS = 65 * 1000; // 65 second cooldown matches Google's 1-min quota window
 
+// Global set of revoked/invalid keys so they are NEVER tried again
+const deadKeys = new Set();
+
+// Sticky index: remember the last working key so subsequent requests don't waste roundtrips
+let preferredKeyIdx = 0;
+
 function isOnCooldown(model, keyIdx) {
   return Date.now() < (_cooldowns.get(`${model}::${keyIdx}`) || 0);
 }
@@ -67,7 +73,7 @@ function isQuotaError(err) {
   );
 }
 
-// ─── Core nested rotation function ───────────────────────────────────────────
+// ─── Core nested rotation function with Sticky Key & Dead Key elimination ─────
 async function generateWithRotatingModels(prompt) {
   if (!API_KEYS || API_KEYS.length === 0) {
     throw new Error(
@@ -76,27 +82,39 @@ async function generateWithRotatingModels(prompt) {
   }
 
   let lastErr = null;
+  const numKeys = API_KEYS.length;
 
   // Outer loop: iterate model tiers from fastest to slowest
   for (const model of MODEL_TIERS) {
-    let allKeysExhausted = true; // assume exhausted until a key succeeds or isn't on cooldown
+    let allKeysExhausted = true;
 
-    // Inner loop: try every API key with this model
-    for (let keyIdx = 0; keyIdx < API_KEYS.length; keyIdx++) {
-      if (isOnCooldown(model, keyIdx)) {
-        // This key is cooling down on this model — skip it
-        console.log(`⏭️  [AI Engine] Skipping key #${keyIdx + 1} on "${model}" (quota cooldown active)`);
-        continue;
-      }
+    // Inner loop: try keys starting from the last successful working key
+    for (let offset = 0; offset < numKeys; offset++) {
+      const keyIdx = (preferredKeyIdx + offset) % numKeys;
 
-      allKeysExhausted = false; // at least one key is still available for this model
+      // Skip permanently dead keys immediately (0ms delay)
+      if (deadKeys.has(keyIdx)) continue;
+
+      // Skip keys cooling down on this model
+      if (isOnCooldown(model, keyIdx)) continue;
+
+      allKeysExhausted = false;
 
       try {
-        console.log(`🤖 [AI Engine] Trying model="${model}" key=#${keyIdx + 1}/${API_KEYS.length}`);
+        console.log(`🤖 [AI Engine] Trying model="${model}" key=#${keyIdx + 1}/${numKeys}`);
         const client = getClient(API_KEYS[keyIdx]);
-        const response = await client.models.generateContent({ model, contents: prompt });
+        
+        // Timeout guard: 8 seconds per attempt so dead calls don't hang Render
+        const responsePromise = client.models.generateContent({ model, contents: prompt });
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("Request timed out after 8s")), 8000)
+        );
+
+        const response = await Promise.race([responsePromise, timeoutPromise]);
 
         if (response?.text) {
+          // Success! Pin this key as preferred for instant subsequent requests
+          preferredKeyIdx = keyIdx;
           console.log(`✅ [AI Engine] Success — model="${model}" key=#${keyIdx + 1}`);
           return response.text;
         }
@@ -104,35 +122,59 @@ async function generateWithRotatingModels(prompt) {
         const msg = err?.message || String(err);
 
         if (msg.includes("leaked") || msg.includes("PERMISSION_DENIED") || msg.includes("API_KEY_INVALID")) {
-          // This specific key is revoked/invalid — skip it permanently this session
-          console.error(`🚫 [AI Engine] Key #${keyIdx + 1} is invalid/revoked. Skipping.`);
-          setCooldown(model, keyIdx); // put on long cooldown so it's skipped
+          // Permanently disable this key across ALL models for this entire process
+          console.error(`🚫 [AI Engine] Key #${keyIdx + 1} is invalid/revoked. Permanently disabling.`);
+          deadKeys.add(keyIdx);
           lastErr = err;
           continue;
         }
 
         if (isQuotaError(err)) {
-          // Quota hit — cool down this key+model combo and try next key
+          // Quota hit on this key+model — cooldown and try next key
           setCooldown(model, keyIdx);
           lastErr = err;
           continue;
         }
 
-        // Non-quota error (network, server error etc) — log and try next key
-        console.warn(`[AI Engine] Non-quota error on model="${model}" key=#${keyIdx + 1}: ${msg}`);
+        console.warn(`[AI Engine] Model="${model}" key=#${keyIdx + 1} error: ${msg}`);
         lastErr = err;
       }
     }
 
     if (allKeysExhausted) {
-      // Every key is on cooldown for this model — move to next (slower) model tier
-      console.warn(`🔁 [AI Engine] All keys quota-exhausted on "${model}". Dropping to next model tier...`);
+      console.warn(`🔁 [AI Engine] All available keys exhausted on "${model}". Falling to next model tier...`);
     }
   }
 
   throw lastErr || new Error(
-    "All model tiers and API keys are quota-exhausted. Please wait ~1 minute and retry."
+    "All model tiers and API keys are currently quota-exhausted. Please retry in a few moments."
   );
+}
+
+// ─── In-Memory Platform Context Cache (30s TTL to prevent Atlas DB latency) ───
+let cachedPlatformContext = null;
+let lastContextCacheTime = 0;
+const CONTEXT_CACHE_TTL_MS = 30 * 1000; // 30 seconds
+
+async function getCachedPlatformContext() {
+  const now = Date.now();
+  if (cachedPlatformContext && (now - lastContextCacheTime < CONTEXT_CACHE_TTL_MS)) {
+    return cachedPlatformContext;
+  }
+  cachedPlatformContext = await buildPlatformContext();
+  lastContextCacheTime = now;
+  return cachedPlatformContext;
+}
+
+// Fast greeting detector for sub-second conversational replies
+const GREETINGS = new Set([
+  "hi", "hello", "hey", "hola", "yo", "good morning", "good evening", 
+  "good afternoon", "sup", "howdy", "test", "who are you", "what can you do"
+]);
+
+function isGreeting(text) {
+  const clean = (text || "").trim().toLowerCase().replace(/[^a-z\s]/g, "");
+  return GREETINGS.has(clean) || clean.length <= 2;
 }
 
 // ─── Live pool status for inspection ─────────────────────────────────────────
@@ -257,10 +299,10 @@ async function buildPlatformContext() {
   };
 }
 
-// Get live platform knowledge summary
+// Get live platform knowledge summary (uses in-memory cache for speed)
 router.get("/context", verifyToken, async (req, res) => {
   try {
-    const context = await buildPlatformContext();
+    const context = await getCachedPlatformContext();
     res.json(context);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -273,7 +315,17 @@ router.post("/chat", verifyToken, async (req, res) => {
     const { question } = req.body;
     if (!question) return res.status(400).json({ error: "Question is required" });
 
-    const platformContext = await buildPlatformContext();
+    // 🚀 Fast-path for greetings: answers in sub-second time without querying MongoDB!
+    if (isGreeting(question)) {
+      const greetingPrompt = `You are the Autonomous PM AI Copilot. Greet the user warmly and concisely in 1-2 friendly sentences. Mention you have real-time access to active projects, timelines, developer allocations, and daily logs. Ask how you can assist them today.`;
+      const answer = await generateWithRotatingModels(greetingPrompt);
+      return res.json({
+        answer,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    const platformContext = await getCachedPlatformContext();
 
     const prompt = `You are the Autonomous PM AI Copilot with real-time access to the organization's project and team database.
 
@@ -285,13 +337,13 @@ ORGANIZATION OVERVIEW:
 - Total Tasks: ${platformContext.total_tasks}
 
 PROJECTS & PRIORITY TIMELINES:
-${JSON.stringify(platformContext.projects, null, 2)}
+${JSON.stringify(platformContext.projects)}
 
 DEVELOPER TEAM WORKLOADS & MULTI-PROJECT ASSIGNMENTS:
-${JSON.stringify(platformContext.team_directory, null, 2)}
+${JSON.stringify(platformContext.team_directory)}
 
 RECENT INACTIVITY & BLOCKERS RECORDED:
-${JSON.stringify(platformContext.recent_blockers, null, 2)}
+${JSON.stringify(platformContext.recent_blockers)}
 ======================================================
 
 USER QUESTION: "${question}"
@@ -299,13 +351,12 @@ USER QUESTION: "${question}"
 CRITICAL INSTRUCTIONS ON RESPONSE LENGTH & STYLE:
 1. **BE ULTRA-CONCISE & DIRECT BY DEFAULT**:
    - For simple, factual, or specific questions, answer directly in 1 to 3 short sentences or concise bullet points.
-   - Do NOT include conversational filler, preamble, repetitive introductions (e.g., "Sure, I can help with that..."), or unrequested essays.
+   - Do NOT include conversational filler or repetitive preamble.
 2. **ONLY PROVIDE LENGTHY OR DETAILED INFO IF EXPLICITLY REQUESTED**:
-   - Only provide detailed paragraphs, deep dives, or multi-section essays if the user specifically asks to "explain in detail", "elaborate", "give me a full breakdown", "detailed info", or "why".
+   - Only provide detailed paragraphs if the user specifically asks to "explain in detail", "elaborate", or "why".
 3. **ACCURACY & DATA-DRIVEN**:
-   - For timeline questions (how many days left, deadlines), give the exact number of days remaining and deadline date directly.
+   - For timeline questions, give the exact days remaining and deadline directly.
    - For developer assignments, state names directly.
-   - For priorities, mention the priority level clearly.
 4. Keep the output clean, sharp, and easy to read.`;
 
     const answer = await generateWithRotatingModels(prompt);
