@@ -7,14 +7,20 @@ const { verifyToken } = require("../middleware/auth");
 
 // ─── Rotating Model & Multi-Key Quota Failover Engine ──────────────────────────
 
-const ROTATING_MODEL_POOL = [
-  process.env.GEMINI_MODEL || "gemini-2.5-flash",
-  "gemini-2.0-flash",
-  "gemini-2.0-flash-lite",
-  "gemini-2.5-pro",
-  "gemini-1.5-flash",
-  "gemini-1.5-pro",
+const RAW_MODEL_POOL = [
+  process.env.GEMINI_MODEL || "gemini-2.0-flash-lite",
+  "gemini-2.0-flash-lite",     // Ultra-fast, minimal latency, highest RPM quota
+  "gemini-3.1-flash-lite",     // Next-gen high-efficiency model
+  "gemini-2.5-flash-lite",     // High-speed lightweight model
+  "gemini-1.5-flash-8b",       // 8B parameter ultra-compact blazing fast model
+  "gemini-2.0-flash",          // Fast multimodal flagship
+  "gemini-2.5-flash",          // General performance flash model
+  "gemini-1.5-flash",          // Stable fallback flash model
+  "gemini-2.5-pro",            // Deep reasoning fallback
 ];
+
+// Deduplicate model list while preserving priority order
+const ROTATING_MODEL_POOL = [...new Set(RAW_MODEL_POOL)];
 
 // Support single key or comma-separated keys (e.g. GEMINI_API_KEY=key1,key2,key3)
 const rawKeys = (process.env.GEMINI_API_KEY || "")

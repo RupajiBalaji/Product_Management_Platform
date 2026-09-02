@@ -4,14 +4,16 @@ import { apiFetch } from "@/lib/db";
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
 const genAI = new GoogleGenAI({ apiKey: API_KEY || "DUMMY_KEY" });
 
-// Rotating active models pool
+// Rotating active models pool (ordered by speed & efficiency first)
 const ROTATING_MODELS = [
-  "gemini-2.5-flash",
-  "gemini-2.0-flash",
-  "gemini-2.0-flash-lite",
-  "gemini-2.5-pro",
-  "gemini-1.5-flash",
-  "gemini-1.5-pro",
+  "gemini-2.0-flash-lite", // Ultra-fast, lowest latency
+  "gemini-3.1-flash-lite", // Next-gen high-efficiency model
+  "gemini-2.5-flash-lite", // Lightweight high-speed model
+  "gemini-1.5-flash-8b",   // 8B parameter ultra-compact model
+  "gemini-2.0-flash",      // Next-gen flash
+  "gemini-2.5-flash",      // High performance flash
+  "gemini-1.5-flash",      // Stable fallback
+  "gemini-2.5-pro",        // Deep reasoning fallback
 ];
 
 let currentModelIdx = 0;
