@@ -5,8 +5,8 @@ const { Project, Task, DailyLog } = require("../models/models");
 const User = require("../models/User");
 const { verifyToken } = require("../middleware/auth");
 
-const API_KEY = process.env.GEMINI_API_KEY || "your_gemini_api_key_here";
-const genAI = new GoogleGenAI({ apiKey: API_KEY });
+const API_KEY = process.env.GEMINI_API_KEY || "";
+const genAI = new GoogleGenAI({ apiKey: API_KEY || "DUMMY_KEY" });
 
 const PRIMARY_MODEL = process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
 const FALLBACK_MODELS = [PRIMARY_MODEL, "gemini-2.5-flash-lite", "gemini-1.5-flash-latest", "gemini-1.5-flash"];

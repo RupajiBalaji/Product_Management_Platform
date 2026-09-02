@@ -52,11 +52,11 @@ The repository is configured as a **Full-Stack Unified Service**:
 | `GEMINI_API_KEY` | `your_gemini_api_key_here` | Your Google Gemini API Key |
 | `JWT_SECRET` | `a_strong_random_jwt_secret_key` | Secret key for signed session cookies |
 | `VITE_FIREBASE_API_KEY` | `your_firebase_api_key_here` | Firebase Auth API Key |
-| `VITE_FIREBASE_AUTH_DOMAIN` | `product-management-d2f7e.firebaseapp.com` | Firebase Auth Domain |
-| `VITE_FIREBASE_PROJECT_ID` | `product-management-d2f7e` | Firebase Project ID |
-| `VITE_FIREBASE_STORAGE_BUCKET` | `product-management-d2f7e.firebasestorage.app` | Firebase Storage Bucket |
-| `VITE_FIREBASE_MESSAGING_SENDER_ID` | `390263177543` | Firebase Messaging Sender ID |
-| `VITE_FIREBASE_APP_ID` | `1:390263177543:web:eced79c963c7834cef4c62` | Firebase App ID |
+| `VITE_FIREBASE_AUTH_DOMAIN` | `your_project_id.firebaseapp.com` | Firebase Auth Domain |
+| `VITE_FIREBASE_PROJECT_ID` | `your_project_id` | Firebase Project ID |
+| `VITE_FIREBASE_STORAGE_BUCKET` | `your_project_id.firebasestorage.app` | Firebase Storage Bucket |
+| `VITE_FIREBASE_MESSAGING_SENDER_ID` | `your_messaging_sender_id` | Firebase Messaging Sender ID |
+| `VITE_FIREBASE_APP_ID` | `your_firebase_app_id` | Firebase App ID |
 
 6. Click **Create Web Service**.
 7. Render will build the Vite frontend into `dist/`, launch the Express server, and provide your live URL (e.g. `https://autonomous-pm.onrender.com`).
