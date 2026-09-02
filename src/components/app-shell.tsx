@@ -80,8 +80,8 @@ export function AppShell({ children, title, eyebrow, actions }: AppShellProps) {
         to={isPM ? "/pm/dashboard" : "/employee/dashboard"}
         className="mb-6 flex items-center gap-3 px-1.5 py-1 group"
       >
-        <div className="flex size-10 items-center justify-center rounded-2xl overflow-hidden shadow-glow group-hover:scale-105 transition-transform duration-200">
-          <img src="/logo.png" alt="Acube Logo" className="size-10 object-cover" />
+        <div className="flex size-10 items-center justify-center shrink-0 group-hover:scale-105 transition-transform duration-200">
+          <img src="/logo.png" alt="Acube Logo" className="size-10 object-contain drop-shadow-[0_0_12px_rgba(168,85,247,0.35)]" />
         </div>
         <div className="leading-tight min-w-0">
           <span className="block font-display text-sm font-extrabold tracking-tight text-sidebar-foreground truncate group-hover:text-primary transition-colors">
