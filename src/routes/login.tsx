@@ -106,7 +106,7 @@ export function LoginPage() {
         {/* Branding */}
         <div className="flex flex-col items-center mb-6 text-center">
           <div className="flex items-center gap-3 mb-2">
-            <img src="/favicon.svg" alt="Logo" className="size-11 rounded-2xl shadow-glow" />
+            <img src="/logo.png" alt="Logo" className="size-11 rounded-2xl shadow-glow" />
             <div className="text-left">
               <h1 className="font-display text-2xl font-extrabold text-foreground tracking-tight">Autonomous PM</h1>
               <p className="text-eyebrow text-[10px]">Dual-Role Workforce & AI Management Platform</p>
