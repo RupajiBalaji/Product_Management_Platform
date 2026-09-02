@@ -22,18 +22,18 @@ const RAW_MODEL_POOL = [
 // Deduplicate model list while preserving priority order
 const ROTATING_MODEL_POOL = [...new Set(RAW_MODEL_POOL)];
 
-// Support single key or comma-separated keys (e.g. GEMINI_API_KEY=key1,key2,key3)
+// Reads exclusively from server environment variables (Render Environment Variables / local .env)
 const rawKeys = (process.env.GEMINI_API_KEY || "")
   .split(",")
   .map((k) => k.trim())
   .filter(Boolean);
-const API_KEYS = rawKeys.length > 0 ? rawKeys : [""];
+const API_KEYS = rawKeys;
 
 // Cache of GoogleGenAI client instances per API key
 const clientCache = new Map();
 function getGenAIClient(apiKey) {
   if (!clientCache.has(apiKey)) {
-    clientCache.set(apiKey, new GoogleGenAI({ apiKey: apiKey || "DUMMY_KEY" }));
+    clientCache.set(apiKey, new GoogleGenAI({ apiKey }));
   }
   return clientCache.get(apiKey);
 }
@@ -60,8 +60,10 @@ function isQuotaExhaustedError(err) {
 
 // Robust generator with rotating loop: when one model's quota is done, switch to next model
 async function generateWithRotatingModels(prompt) {
-  if (API_KEYS.length === 0 || !API_KEYS[0]) {
-    throw new Error("GEMINI_API_KEY is not configured. Please set your Google Gemini API key in your .env file.");
+  if (!API_KEYS || API_KEYS.length === 0) {
+    throw new Error(
+      "GEMINI_API_KEY is not configured in the server environment. Please add GEMINI_API_KEY in your Render Dashboard Environment settings (or local .env file)."
+    );
   }
 
   const poolLength = ROTATING_MODEL_POOL.length;
