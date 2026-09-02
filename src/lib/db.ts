@@ -13,7 +13,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
   };
 }
 
-async function apiFetch(endpoint: string, options: RequestInit = {}) {
+export async function apiFetch(endpoint: string, options: RequestInit = {}) {
   const headers = await getAuthHeaders();
   const res = await fetch(`${API_BASE}${endpoint}`, {
     ...options,

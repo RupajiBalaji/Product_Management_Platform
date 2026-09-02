@@ -1,51 +1,89 @@
 import { GoogleGenAI } from "@google/genai";
+import { apiFetch } from "@/lib/db";
 
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
 const genAI = new GoogleGenAI({ apiKey: API_KEY || "DUMMY_KEY" });
 
-const MODELS = ["gemini-3.5-flash-lite", "gemini-2.5-flash-lite", "gemini-1.5-flash-latest", "gemini-1.5-flash"];
+// Rotating active models pool
+const ROTATING_MODELS = [
+  "gemini-2.5-flash",
+  "gemini-2.0-flash",
+  "gemini-2.0-flash-lite",
+  "gemini-2.5-pro",
+  "gemini-1.5-flash",
+  "gemini-1.5-pro",
+];
 
-async function runGeminiWithFallback(prompt: string): Promise<string> {
+let currentModelIdx = 0;
+
+async function runGeminiWithRotation(prompt: string): Promise<string> {
+  const poolLen = ROTATING_MODELS.length;
   let lastErr = null;
-  for (const modelName of MODELS) {
+
+  for (let attempt = 0; attempt < poolLen; attempt++) {
+    const candidateIdx = (currentModelIdx + attempt) % poolLen;
+    const modelName = ROTATING_MODELS[candidateIdx];
+
     try {
       const response = await genAI.models.generateContent({
         model: modelName,
         contents: prompt,
       });
-      if (response?.text) return response.text;
-    } catch (err) {
-      console.warn(`[Gemini Client] Model ${modelName} failed, trying fallback...`, err);
+      if (response?.text) {
+        currentModelIdx = (candidateIdx + 1) % poolLen;
+        return response.text;
+      }
+    } catch (err: any) {
+      console.warn(`[Gemini Client] Model ${modelName} failed or quota hit, rotating...`, err?.message || err);
       lastErr = err;
     }
   }
-  throw lastErr || new Error("Failed to generate response across all Gemini models.");
+
+  throw lastErr || new Error("All Gemini models in rotation pool failed or exhausted quota.");
 }
 
 export async function generateAISummary(prompt: string): Promise<string> {
+  // First attempt backend server rotation engine
   try {
-    return await runGeminiWithFallback(prompt);
+    const data = await apiFetch("/api/ai/chat", {
+      method: "POST",
+      body: JSON.stringify({ question: prompt }),
+    });
+    if (data?.answer) return data.answer;
+  } catch {
+    // Fall back to direct client-side rotation if backend is unreachable
+  }
+
+  try {
+    return await runGeminiWithRotation(prompt);
   } catch (err) {
     console.error("Gemini error:", err);
-    return "AI summary could not be generated. Please try again.";
+    return "AI summary could not be generated. Please verify your GEMINI_API_KEY.";
   }
 }
 
 export async function askProjectAI(question: string, context: string): Promise<string> {
-  const systemPrompt = `You are an intelligent project management assistant for a team management platform.
-You have access to the following project and employee data context:
+  // First attempt backend server rotation engine
+  try {
+    const data = await apiFetch("/api/ai/chat", {
+      method: "POST",
+      body: JSON.stringify({ question, context }),
+    });
+    if (data?.answer) return data.answer;
+  } catch {
+    // Fall back to direct client-side rotation if backend is unreachable
+  }
 
+  const systemPrompt = `You are an intelligent project management assistant.
+Context:
 ${context}
-
-Answer the following question based strictly on the project data above. Be concise, clear, and data-driven.
-If something is not in the data, say so honestly.
 
 Question: ${question}`;
 
   try {
-    return await runGeminiWithFallback(systemPrompt);
+    return await runGeminiWithRotation(systemPrompt);
   } catch (err) {
     console.error("Gemini error:", err);
-    return "Unable to process your question. Please try again.";
+    return "Unable to process your question. Please verify your GEMINI_API_KEY.";
   }
 }

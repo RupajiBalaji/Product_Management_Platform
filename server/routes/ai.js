@@ -5,44 +5,123 @@ const { Project, Task, DailyLog } = require("../models/models");
 const User = require("../models/User");
 const { verifyToken } = require("../middleware/auth");
 
-const API_KEY = process.env.GEMINI_API_KEY || "";
-const genAI = new GoogleGenAI({ apiKey: API_KEY || "DUMMY_KEY" });
+// ─── Rotating Model & Multi-Key Quota Failover Engine ──────────────────────────
 
-const PRIMARY_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
-const FALLBACK_MODELS = [
-  PRIMARY_MODEL,
+const ROTATING_MODEL_POOL = [
+  process.env.GEMINI_MODEL || "gemini-2.5-flash",
   "gemini-2.0-flash",
   "gemini-2.0-flash-lite",
-  "gemini-1.5-flash",
   "gemini-2.5-pro",
+  "gemini-1.5-flash",
+  "gemini-1.5-pro",
 ];
 
-// Robust generator trying primary model then fallbacks
-async function generateWithFallback(prompt) {
-  if (!API_KEY || API_KEY === "DUMMY_KEY") {
+// Support single key or comma-separated keys (e.g. GEMINI_API_KEY=key1,key2,key3)
+const rawKeys = (process.env.GEMINI_API_KEY || "")
+  .split(",")
+  .map((k) => k.trim())
+  .filter(Boolean);
+const API_KEYS = rawKeys.length > 0 ? rawKeys : [""];
+
+// Cache of GoogleGenAI client instances per API key
+const clientCache = new Map();
+function getGenAIClient(apiKey) {
+  if (!clientCache.has(apiKey)) {
+    clientCache.set(apiKey, new GoogleGenAI({ apiKey: apiKey || "DUMMY_KEY" }));
+  }
+  return clientCache.get(apiKey);
+}
+
+// Rotation state & cooldown memory
+let currentModelIndex = 0;
+let currentKeyIndex = 0;
+const modelCooldowns = new Map(); // modelName -> timestamp (ms) when cooldown ends
+const COOLDOWN_DURATION_MS = 60 * 1000; // 60 seconds cooldown after 429 quota exhaustion
+
+function isQuotaExhaustedError(err) {
+  const msg = (err?.message || String(err)).toLowerCase();
+  const status = err?.status || err?.code || 0;
+  return (
+    status === 429 ||
+    msg.includes("429") ||
+    msg.includes("resource_exhausted") ||
+    msg.includes("quota") ||
+    msg.includes("rate limit") ||
+    msg.includes("too many requests") ||
+    msg.includes("exhausted")
+  );
+}
+
+// Robust generator with rotating loop: when one model's quota is done, switch to next model
+async function generateWithRotatingModels(prompt) {
+  if (API_KEYS.length === 0 || !API_KEYS[0]) {
     throw new Error("GEMINI_API_KEY is not configured. Please set your Google Gemini API key in your .env file.");
   }
 
+  const poolLength = ROTATING_MODEL_POOL.length;
+  const now = Date.now();
   let lastErr = null;
-  for (const modelName of FALLBACK_MODELS) {
+
+  // Attempt across the rotating pool starting from currentModelIndex
+  for (let attempt = 0; attempt < poolLength; attempt++) {
+    const candidateIdx = (currentModelIndex + attempt) % poolLength;
+    const modelName = ROTATING_MODEL_POOL[candidateIdx];
+
+    // Check if candidate model is currently in quota cooldown
+    const cooldownExpiry = modelCooldowns.get(modelName) || 0;
+    if (now < cooldownExpiry && attempt < poolLength - 1) {
+      const remainingSec = Math.ceil((cooldownExpiry - now) / 1000);
+      console.log(`⏳ [Gemini Engine] Skipping "${modelName}" (quota cooldown active for ${remainingSec}s)...`);
+      continue;
+    }
+
+    const currentKey = API_KEYS[currentKeyIndex % API_KEYS.length];
+    const client = getGenAIClient(currentKey);
+
     try {
-      const response = await genAI.models.generateContent({
+      console.log(`🤖 [Gemini Engine] Attempting request using model: "${modelName}" (key #${(currentKeyIndex % API_KEYS.length) + 1})...`);
+
+      const response = await client.models.generateContent({
         model: modelName,
         contents: prompt,
       });
+
       if (response && response.text) {
+        // Model succeeded: advance index for fair round-robin load distribution
+        currentModelIndex = (candidateIdx + 1) % poolLength;
+        // Clear any prior cooldown for this model
+        modelCooldowns.delete(modelName);
+        console.log(`✅ [Gemini Engine] Response generated successfully with "${modelName}". Next model queued.`);
         return response.text;
       }
     } catch (err) {
-      const errMsg = err.message || String(err);
+      const errMsg = err?.message || String(err);
+
       if (errMsg.includes("leaked") || errMsg.includes("PERMISSION_DENIED")) {
-        throw new Error("Your Google Gemini API key was reported as leaked/revoked by Google. Please generate a new free API key at https://aistudio.google.com and set GEMINI_API_KEY in your .env file.");
+        throw new Error(
+          "Your Google Gemini API key was reported as leaked/revoked by Google. Please generate a new free API key at https://aistudio.google.com and set GEMINI_API_KEY in your .env file."
+        );
       }
-      console.warn(`[Gemini] Model ${modelName} failed:`, errMsg);
+
+      if (isQuotaExhaustedError(err)) {
+        // Mark model as quota-exhausted for 60 seconds
+        modelCooldowns.set(modelName, Date.now() + COOLDOWN_DURATION_MS);
+        console.warn(`⚠️ [Gemini Engine] Quota reached on model "${modelName}" (429/ResourceExhausted). Rotating to next model in loop...`);
+
+        // If multiple API keys exist, also rotate to next key
+        if (API_KEYS.length > 1) {
+          currentKeyIndex = (currentKeyIndex + 1) % API_KEYS.length;
+          console.log(`🔄 [Gemini Engine] Also rotating API key to key #${(currentKeyIndex % API_KEYS.length) + 1}`);
+        }
+      } else {
+        console.warn(`[Gemini Engine] Model "${modelName}" error:`, errMsg);
+      }
+
       lastErr = err;
     }
   }
-  throw lastErr || new Error("All Gemini models failed to generate a response.");
+
+  throw lastErr || new Error("All models in the rotating pool exhausted their quota or failed. Please retry shortly.");
 }
 
 // Build comprehensive live platform knowledge base from MongoDB
@@ -196,7 +275,7 @@ CRITICAL INSTRUCTIONS ON RESPONSE LENGTH & STYLE:
    - For priorities, mention the priority level clearly.
 4. Keep the output clean, sharp, and easy to read.`;
 
-    const answer = await generateWithFallback(prompt);
+    const answer = await generateWithRotatingModels(prompt);
 
     res.json({
       answer,
@@ -233,12 +312,35 @@ Provide a crisp, executive summary formatted with bullet points:
 • ⚠️ Active Blockers / Slippage Risks (if any)
 • 💡 Key PM Action Item (1-2 sentences)`;
 
-    const summary = await generateWithFallback(prompt);
+    const summary = await generateWithRotatingModels(prompt);
 
     res.json({ summary });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// Real-time inspection of rotating models pool & quota status
+router.get("/models-status", (req, res) => {
+  const now = Date.now();
+  const poolStatus = ROTATING_MODEL_POOL.map((model, idx) => {
+    const cooldownExpiry = modelCooldowns.get(model) || 0;
+    const isCoolingDown = now < cooldownExpiry;
+    return {
+      model,
+      is_current_target: idx === currentModelIndex,
+      status: isCoolingDown ? "cooling_down (quota exhausted)" : "healthy",
+      cooldown_remaining_seconds: isCoolingDown ? Math.ceil((cooldownExpiry - now) / 1000) : 0,
+    };
+  });
+
+  res.json({
+    success: true,
+    active_model: ROTATING_MODEL_POOL[currentModelIndex],
+    current_model_index: currentModelIndex,
+    configured_keys_count: API_KEYS.length,
+    pool: poolStatus,
+  });
 });
 
 module.exports = router;
