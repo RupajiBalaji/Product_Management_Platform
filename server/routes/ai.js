@@ -8,11 +8,21 @@ const { verifyToken } = require("../middleware/auth");
 const API_KEY = process.env.GEMINI_API_KEY || "";
 const genAI = new GoogleGenAI({ apiKey: API_KEY || "DUMMY_KEY" });
 
-const PRIMARY_MODEL = process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
-const FALLBACK_MODELS = [PRIMARY_MODEL, "gemini-2.5-flash-lite", "gemini-1.5-flash-latest", "gemini-1.5-flash"];
+const PRIMARY_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+const FALLBACK_MODELS = [
+  PRIMARY_MODEL,
+  "gemini-2.0-flash",
+  "gemini-2.0-flash-lite",
+  "gemini-1.5-flash",
+  "gemini-2.5-pro",
+];
 
 // Robust generator trying primary model then fallbacks
 async function generateWithFallback(prompt) {
+  if (!API_KEY || API_KEY === "DUMMY_KEY") {
+    throw new Error("GEMINI_API_KEY is not configured. Please set your Google Gemini API key in your .env file.");
+  }
+
   let lastErr = null;
   for (const modelName of FALLBACK_MODELS) {
     try {
@@ -24,7 +34,11 @@ async function generateWithFallback(prompt) {
         return response.text;
       }
     } catch (err) {
-      console.warn(`[Gemini] Model ${modelName} failed:`, err.message || err);
+      const errMsg = err.message || String(err);
+      if (errMsg.includes("leaked") || errMsg.includes("PERMISSION_DENIED")) {
+        throw new Error("Your Google Gemini API key was reported as leaked/revoked by Google. Please generate a new free API key at https://aistudio.google.com and set GEMINI_API_KEY in your .env file.");
+      }
+      console.warn(`[Gemini] Model ${modelName} failed:`, errMsg);
       lastErr = err;
     }
   }
