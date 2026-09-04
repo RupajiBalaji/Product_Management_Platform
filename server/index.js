@@ -21,6 +21,8 @@ const analyticsRoutes = require("./routes/analytics");
 const aiRoutes = require("./routes/ai");
 const rolesRoutes = require("./routes/roles");
 const capacityRoutes = require("./routes/capacity");
+const submissionsRoutes = require("./routes/submissions");
+const appealsRoutes = require("./routes/appeals");
 const seedDatabase = require("./seed");
 const { verifyToken, requirePM } = require("./middleware/auth");
 
@@ -105,6 +107,8 @@ app.use("/api/analytics", analyticsRoutes);
 app.use("/api/ai", aiRoutes);
 app.use("/api/roles", rolesRoutes);
 app.use("/api/capacity", capacityRoutes);
+app.use("/api/submissions", submissionsRoutes);
+app.use("/api/appeals", appealsRoutes);
 
 // Seed API endpoint (Protected)
 app.post("/api/seed", verifyToken, async (req, res) => {

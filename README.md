@@ -57,7 +57,16 @@ Traditional enterprise project management tools (Jira, Asana, Monday.com) are fr
 - **Sovereign Override & Audit Protection**: Product Leads can force-override capacity conflicts (`force: true`), recording an immutable `CAPACITY_OVERRIDDEN` event in the append-only `AuditLog`.
 - **Global Capacity Ledger View (`/pm/capacity`)**: Dedicated portfolio table showing real-time utilization bars, over-allocation alerts, and commitment breakdowns.
 
-### 5. 📅 Interactive Calendar Matrix GUI
+### 5. 🎯 QA Definition-of-Done Gate, Dual Evaluation & Appeals (Phase 4)
+- **Automated QA Gate**: Enforces strict Definition-of-Done criteria before tasks can transition to `completed`.
+- **Dual Evaluation Modes (`evaluationMode`)**:
+  - **`objective`**: Strict automated validation for Engineering, Backend, and QA roles. Google Gemini evaluates artifacts against task criteria in structured JSON format (`passed`, `missing_items`, `reasoning`), auto-approving or rejecting and tracking `rejection_count`.
+  - **`subjective`**: Structural validation (valid Figma/PR URL, minimum text length) with mandatory human review (`pending_review`) for UI/UX Design, Copywriting, and Creative roles.
+- **Fail-Safe Fallback**: If Gemini encounters network or quota errors (e.g. HTTP 429), submissions automatically land in `pending_review` with human review notifications to prevent delivery bottlenecks.
+- **Unified Review & Appeals Queue (`/pm/reviews`)**: Dedicated interface for Product Leads and Lead Architects with two-pane inspection, one-click deliverable approval/rejection, and appeal adjudication.
+- **Contested Appeal Mechanism**: Employees can contest rejected deliverables with justifications; Lead/Architect overrides flip submissions directly to `approved`, update task status, and record an immutable `APPEAL_RESOLVED` event in `AuditLog`.
+
+### 6. 📅 Interactive Calendar Matrix GUI
 - **Day-by-Day Contributor Matrix**: Interactive grid showing real-time contributor status (`Completed`, `In Progress`, `Blocked`, `No Log`).
 - **Instant Log Inspector Modal**: Click any log cell to inspect submitted deliverables, actual hours spent, blocker descriptions, and PR links.
 
@@ -103,6 +112,9 @@ autonomous-project-pilot/
 │   │   ├── pm.projects.index.tsx   # Project Portfolio View
 │   │   ├── pm.projects.$projectId.tsx # Project Detail & Team Allocation
 │   │   ├── pm.projects.$projectId.matrix.tsx # Interactive Calendar Matrix
+│   │   ├── pm.capacity.tsx         # Global Capacity Registry & Utilization Ledger
+│   │   ├── pm.reviews.tsx          # QA Gate Sign-Off & Contested Appeals Queue
+│   │   ├── pm.roles.tsx            # Dynamic Role & Evaluation Mode Governance
 │   │   ├── pm.employees.tsx        # Workforce Directory
 │   │   ├── pm.employees.$employeeId.tsx # Employee 360 Profile & Capacity Gauge
 │   │   ├── pm.ai-hub.tsx           # Multi-Dimension AI Summary Engine
@@ -194,7 +206,13 @@ The repository is configured as a **Unified Web Service** on Render where Expres
 | `POST` | `/api/projects` | Create a new project sandbox |
 | `PATCH` | `/api/projects/:id` | Update project priority or team members |
 | `GET` | `/api/tasks` | Fetch tasks filtered by project or employee |
-| `POST` | `/api/tasks` | Create deliverable with priority flag |
+| `POST` | `/api/tasks` | Create deliverable with priority flag & dependencies |
+| `POST` | `/api/submissions` | Submit deliverable for QA DoD gate evaluation (AI/Subjective) |
+| `GET` | `/api/submissions/pending-review` | List deliverables awaiting Lead/Architect human sign-off |
+| `POST` | `/api/submissions/:id/human-review` | Approve or request changes on deliverable (with AuditLog) |
+| `POST` | `/api/appeals` | Contest rejected deliverable with justification (employee only) |
+| `GET` | `/api/appeals/pending` | List pending appeals awaiting adjudication |
+| `POST` | `/api/appeals/:id/resolve` | Resolve appeal (override/upheld) with AuditLog and status flip |
 | `POST` | `/api/logs` | Submit daily work log with blocker status |
 | `GET` | `/api/analytics/matrix/:projectId` | Aggregate day-by-day contributor calendar grid |
 | `POST` | `/api/ai/summarize` | Generate multi-dimension executive synthesis |

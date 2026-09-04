@@ -31,7 +31,7 @@ router.get("/:id", verifyToken, async (req, res) => {
 // ─── POST /api/roles — Create new role (Product Lead only) ────────────────────
 router.post("/", verifyToken, requireProductLead, async (req, res) => {
   try {
-    const { title, domain, description, skillTags, defaultDailyCapHours, orgScoped } = req.body;
+    const { title, domain, description, skillTags, defaultDailyCapHours, orgScoped, evaluationMode } = req.body;
 
     if (!title || !title.trim()) {
       return res.status(400).json({ success: false, error: "Role title is required" });
@@ -59,6 +59,7 @@ router.post("/", verifyToken, requireProductLead, async (req, res) => {
       defaultDailyCapHours: Number(defaultDailyCapHours) || 8,
       createdBy: req.uid,
       orgScoped: orgScoped !== undefined ? Boolean(orgScoped) : true,
+      evaluationMode: evaluationMode === "subjective" ? "subjective" : "objective",
     });
 
     await role.save();
@@ -93,7 +94,7 @@ router.put("/:id", verifyToken, requireProductLead, async (req, res) => {
     }
 
     const beforeState = role.toObject();
-    const { title, domain, description, skillTags, defaultDailyCapHours, orgScoped } = req.body;
+    const { title, domain, description, skillTags, defaultDailyCapHours, orgScoped, evaluationMode } = req.body;
 
     if (title && title.trim() !== role.title) {
       const duplicate = await DynamicRole.findOne({ title: title.trim(), _id: { $ne: role._id } });
@@ -109,6 +110,9 @@ router.put("/:id", verifyToken, requireProductLead, async (req, res) => {
       role.defaultDailyCapHours = Math.max(1, Math.min(24, Number(defaultDailyCapHours) || 8));
     }
     if (orgScoped !== undefined) role.orgScoped = Boolean(orgScoped);
+    if (evaluationMode && ["objective", "subjective"].includes(evaluationMode)) {
+      role.evaluationMode = evaluationMode;
+    }
 
     if (skillTags !== undefined) {
       role.skillTags = Array.isArray(skillTags)

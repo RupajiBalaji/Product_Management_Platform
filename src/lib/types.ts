@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 export { cn };
 
 // Re-export ProjectPriority from constants as the canonical type
-export type { ProjectPriority } from "@/lib/constants";
+export type { ProjectPriority, EvaluationMode, SubmissionStatus, AppealStatus } from "@/lib/constants";
 export type UserType = "product_lead" | "lead_architect" | "employee" | "pm";
 export type ProjectStatus = "active" | "in-review" | "completed" | "frozen" | "archived";
 
@@ -15,6 +15,7 @@ export interface DynamicRole {
   description: string;
   skillTags: string[];
   defaultDailyCapHours: number;
+  evaluationMode?: import("@/lib/constants").EvaluationMode;
   createdBy?: string;
   orgScoped?: boolean;
   created_at?: string;
@@ -137,3 +138,41 @@ export interface CapacityResolutionSuggestion {
     priority: import("@/lib/constants").ProjectPriority;
   }>;
 }
+
+// ─── Phase 4: QA Gate & Appeal Types ──────────────────────────────────────────
+
+export interface Submission {
+  id: string;
+  _id?: string;
+  task_id: string | Task;
+  employee_id: string | UserProfile;
+  artifact_url: string;
+  artifact_type: "pr_link" | "figma_link" | "file" | "text";
+  status: import("@/lib/constants").SubmissionStatus;
+  evaluation_mode: import("@/lib/constants").EvaluationMode;
+  ai_verdict?: {
+    passed: boolean | null;
+    missing_items: string[];
+    reasoning: string;
+  };
+  rejection_count: number;
+  reviewed_by?: string | UserProfile | null;
+  reviewed_at?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface Appeal {
+  id: string;
+  _id?: string;
+  submission_id: string | Submission;
+  employee_id: string | UserProfile;
+  justification: string;
+  status: import("@/lib/constants").AppealStatus;
+  reviewer_id?: string | UserProfile | null;
+  reviewer_notes?: string;
+  resolved_at?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+

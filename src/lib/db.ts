@@ -283,6 +283,7 @@ export async function createDynamicRole(data: {
   description?: string;
   skillTags: string[];
   defaultDailyCapHours: number;
+  evaluationMode?: import("@/lib/constants").EvaluationMode;
   orgScoped?: boolean;
 }): Promise<DynamicRole> {
   const res = await apiFetch("/api/roles", {
@@ -300,6 +301,7 @@ export async function updateDynamicRole(
     description: string;
     skillTags: string[];
     defaultDailyCapHours: number;
+    evaluationMode: import("@/lib/constants").EvaluationMode;
     orgScoped: boolean;
   }>
 ): Promise<DynamicRole> {
@@ -556,3 +558,103 @@ export async function getCapacityDashboard(): Promise<import("@/lib/types").Empl
     return [];
   }
 }
+
+// ─── Phase 4: QA Gate & Submissions ───────────────────────────────────────────
+
+export async function createSubmission(data: {
+  task_id: string;
+  artifact_url: string;
+  artifact_type?: string;
+}): Promise<{ success: boolean; submissionId: string; status: string; message: string }> {
+  return await apiFetch("/api/submissions", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function getSubmissionById(id: string): Promise<import("@/lib/types").Submission | null> {
+  try {
+    const res = await apiFetch(`/api/submissions/${id}`);
+    return normalizeDoc(res.submission);
+  } catch {
+    return null;
+  }
+}
+
+export async function getSubmissionsByTask(taskId: string): Promise<import("@/lib/types").Submission[]> {
+  try {
+    const res = await apiFetch(`/api/submissions/task/${taskId}`);
+    return normalizeDocs(res.submissions || []);
+  } catch {
+    return [];
+  }
+}
+
+export async function getPendingSubmissions(): Promise<import("@/lib/types").Submission[]> {
+  try {
+    const res = await apiFetch("/api/submissions/pending-review");
+    return normalizeDocs(res.submissions || []);
+  } catch {
+    return [];
+  }
+}
+
+export async function reviewSubmissionHuman(
+  id: string,
+  decision: "approved" | "rejected",
+  notes?: string
+): Promise<import("@/lib/types").Submission> {
+  const res = await apiFetch(`/api/submissions/${id}/human-review`, {
+    method: "POST",
+    body: JSON.stringify({ decision, notes }),
+  });
+  return normalizeDoc(res.submission);
+}
+
+// ─── Phase 4: Appeals ─────────────────────────────────────────────────────────
+
+export async function createAppeal(data: {
+  submission_id: string;
+  justification: string;
+}): Promise<import("@/lib/types").Appeal> {
+  const res = await apiFetch("/api/appeals", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+  return normalizeDoc(res.appeal);
+}
+
+export async function getPendingAppeals(): Promise<import("@/lib/types").Appeal[]> {
+  try {
+    const res = await apiFetch("/api/appeals/pending");
+    return normalizeDocs(res.appeals || []);
+  } catch {
+    return [];
+  }
+}
+
+export async function getAppealById(id: string): Promise<import("@/lib/types").Appeal | null> {
+  try {
+    const res = await apiFetch(`/api/appeals/${id}`);
+    return normalizeDoc(res.appeal);
+  } catch {
+    return null;
+  }
+}
+
+export async function resolveAppeal(
+  id: string,
+  decision: "overridden" | "upheld",
+  notes?: string
+): Promise<{ success: boolean; appeal: import("@/lib/types").Appeal; submission?: import("@/lib/types").Submission }> {
+  const res = await apiFetch(`/api/appeals/${id}/resolve`, {
+    method: "POST",
+    body: JSON.stringify({ decision, notes }),
+  });
+  return {
+    ...res,
+    appeal: normalizeDoc(res.appeal),
+    submission: res.submission ? normalizeDoc(res.submission) : undefined,
+  };
+}
+

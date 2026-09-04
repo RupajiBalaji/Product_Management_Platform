@@ -417,3 +417,4 @@ router.get("/models-status", (req, res) => {
 });
 
 module.exports = router;
+module.exports.generateWithRotatingModels = generateWithRotatingModels;

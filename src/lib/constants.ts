@@ -98,3 +98,71 @@ export function normalizePriority(priority: string | undefined | null): ProjectP
 export function comparePriority(a: ProjectPriority, b: ProjectPriority): number {
   return PRIORITY_WEIGHT[b] - PRIORITY_WEIGHT[a];
 }
+
+// ─── Phase 4: QA Gate, Dual Evaluation & Appeal Constants ─────────────────────
+
+export type EvaluationMode = "objective" | "subjective";
+
+export const EVALUATION_MODE_STYLES: Record<
+  EvaluationMode,
+  { label: string; shortLabel: string; icon: string; badge: string; desc: string }
+> = {
+  objective: {
+    label: "⚡ Objective (Automated QA)",
+    shortLabel: "AI-Graded",
+    icon: "⚡",
+    badge: "border-cyan-500/40 bg-cyan-500/10 text-cyan-300 font-semibold",
+    desc: "Strict automated validation against acceptance criteria via Gemini AI.",
+  },
+  subjective: {
+    label: "👤 Subjective (Design & Creative)",
+    shortLabel: "Human Review",
+    icon: "👤",
+    badge: "border-pink-500/40 bg-pink-500/10 text-pink-300 font-semibold",
+    desc: "Lighter structural check, always requires human lead sign-off.",
+  },
+};
+
+export type SubmissionStatus = "pending_review" | "approved" | "rejected";
+
+export const SUBMISSION_STATUS_STYLES: Record<
+  SubmissionStatus,
+  { label: string; badge: string; icon: string }
+> = {
+  pending_review: {
+    label: "Pending Review",
+    badge: "border-warning/40 bg-warning/15 text-warning font-semibold",
+    icon: "⏳",
+  },
+  approved: {
+    label: "QA Approved",
+    badge: "border-success/40 bg-success/15 text-success font-semibold",
+    icon: "✓",
+  },
+  rejected: {
+    label: "Changes Requested",
+    badge: "border-destructive/40 bg-destructive/15 text-destructive font-semibold",
+    icon: "⚠️",
+  },
+};
+
+export type AppealStatus = "pending" | "overridden" | "upheld";
+
+export const APPEAL_STATUS_STYLES: Record<
+  AppealStatus,
+  { label: string; badge: string }
+> = {
+  pending: {
+    label: "Appeal Pending",
+    badge: "border-warning/40 bg-warning/15 text-warning font-semibold",
+  },
+  overridden: {
+    label: "Appeal Overridden (Approved)",
+    badge: "border-success/40 bg-success/15 text-success font-semibold",
+  },
+  upheld: {
+    label: "Rejection Upheld",
+    badge: "border-destructive/40 bg-destructive/15 text-destructive font-semibold",
+  },
+};
+

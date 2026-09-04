@@ -18,6 +18,7 @@ import { Route as PmAiHubRouteImport } from './routes/pm.ai-hub'
 import { Route as PmCapacityRouteImport } from './routes/pm.capacity'
 import { Route as PmDashboardRouteImport } from './routes/pm.dashboard'
 import { Route as PmEmployeesRouteImport } from './routes/pm.employees'
+import { Route as PmReviewsRouteImport } from './routes/pm.reviews'
 import { Route as PmRolesRouteImport } from './routes/pm.roles'
 import { Route as PmEmployeesEmployeeIdRouteImport } from './routes/pm.employees.$employeeId'
 import { Route as PmProjectsIndexRouteImport } from './routes/pm.projects.index'
@@ -70,6 +71,11 @@ const PmEmployeesRoute = PmEmployeesRouteImport.update({
   path: '/employees',
   getParentRoute: () => PmRoute,
 } as any)
+const PmReviewsRoute = PmReviewsRouteImport.update({
+  id: '/reviews',
+  path: '/reviews',
+  getParentRoute: () => PmRoute,
+} as any)
 const PmRolesRoute = PmRolesRouteImport.update({
   id: '/roles',
   path: '/roles',
@@ -112,6 +118,7 @@ export interface FileRoutesByFullPath {
   '/pm/capacity': typeof PmCapacityRoute
   '/pm/dashboard': typeof PmDashboardRoute
   '/pm/employees': typeof PmEmployeesRouteWithChildren
+  '/pm/reviews': typeof PmReviewsRoute
   '/pm/roles': typeof PmRolesRoute
   '/pm/employees/$employeeId': typeof PmEmployeesEmployeeIdRoute
   '/pm/projects/$projectId': typeof PmProjectsProjectIdRouteWithChildren
@@ -129,6 +136,7 @@ export interface FileRoutesByTo {
   '/pm/capacity': typeof PmCapacityRoute
   '/pm/dashboard': typeof PmDashboardRoute
   '/pm/employees': typeof PmEmployeesRouteWithChildren
+  '/pm/reviews': typeof PmReviewsRoute
   '/pm/roles': typeof PmRolesRoute
   '/pm/employees/$employeeId': typeof PmEmployeesEmployeeIdRoute
   '/pm/projects/$projectId': typeof PmProjectsProjectIdRouteWithChildren
@@ -147,6 +155,7 @@ export interface FileRoutesById {
   '/pm/capacity': typeof PmCapacityRoute
   '/pm/dashboard': typeof PmDashboardRoute
   '/pm/employees': typeof PmEmployeesRouteWithChildren
+  '/pm/reviews': typeof PmReviewsRoute
   '/pm/roles': typeof PmRolesRoute
   '/pm/employees/$employeeId': typeof PmEmployeesEmployeeIdRoute
   '/pm/projects/$projectId': typeof PmProjectsProjectIdRouteWithChildren
@@ -166,6 +175,7 @@ export interface FileRouteTypes {
     | '/pm/capacity'
     | '/pm/dashboard'
     | '/pm/employees'
+    | '/pm/reviews'
     | '/pm/roles'
     | '/pm/employees/$employeeId'
     | '/pm/projects/$projectId'
@@ -183,6 +193,7 @@ export interface FileRouteTypes {
     | '/pm/capacity'
     | '/pm/dashboard'
     | '/pm/employees'
+    | '/pm/reviews'
     | '/pm/roles'
     | '/pm/employees/$employeeId'
     | '/pm/projects/$projectId'
@@ -200,6 +211,7 @@ export interface FileRouteTypes {
     | '/pm/capacity'
     | '/pm/dashboard'
     | '/pm/employees'
+    | '/pm/reviews'
     | '/pm/roles'
     | '/pm/employees/$employeeId'
     | '/pm/projects/$projectId'
@@ -278,6 +290,13 @@ declare module '@tanstack/react-router' {
       path: '/employees'
       fullPath: '/pm/employees'
       preLoaderRoute: typeof PmEmployeesRouteImport
+      parentRoute: typeof PmRoute
+    }
+    '/pm/reviews': {
+      id: '/pm/reviews'
+      path: '/reviews'
+      fullPath: '/pm/reviews'
+      preLoaderRoute: typeof PmReviewsRouteImport
       parentRoute: typeof PmRoute
     }
     '/pm/roles': {
@@ -367,6 +386,7 @@ interface PmRouteChildren {
   PmCapacityRoute: typeof PmCapacityRoute
   PmDashboardRoute: typeof PmDashboardRoute
   PmEmployeesRoute: typeof PmEmployeesRouteWithChildren
+  PmReviewsRoute: typeof PmReviewsRoute
   PmRolesRoute: typeof PmRolesRoute
   PmProjectsProjectIdRoute: typeof PmProjectsProjectIdRouteWithChildren
   PmProjectsIndexRoute: typeof PmProjectsIndexRoute
@@ -377,6 +397,7 @@ const PmRouteChildren: PmRouteChildren = {
   PmCapacityRoute: PmCapacityRoute,
   PmDashboardRoute: PmDashboardRoute,
   PmEmployeesRoute: PmEmployeesRouteWithChildren,
+  PmReviewsRoute: PmReviewsRoute,
   PmRolesRoute: PmRolesRoute,
   PmProjectsProjectIdRoute: PmProjectsProjectIdRouteWithChildren,
   PmProjectsIndexRoute: PmProjectsIndexRoute,

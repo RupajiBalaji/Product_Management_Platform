@@ -486,6 +486,10 @@ function ProjectDetailPage() {
                           {isCompleted ? "Completed" : isActive ? "In Progress" : isOverdue ? "Overdue" : "Scheduled"}
                         </span>
 
+                        <span className="rounded-full border border-border/70 bg-secondary/40 px-2 py-0.5 text-[9px] font-mono text-muted-foreground">
+                          QA Gate: AI-Graded
+                        </span>
+
                         {/* Dependency Status Badge */}
                         {deps.length > 0 ? (
                           hasBlockers ? (

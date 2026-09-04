@@ -13,6 +13,7 @@ const SEED_ROLES = [
     description: "Designs system architecture, evaluates tech stack decisions, and unblocks high-level technical dependencies.",
     skillTags: ["System Design", "Cloud Infrastructure", "API Architecture", "Microservices"],
     defaultDailyCapHours: 6,
+    evaluationMode: "objective",
   },
   {
     title: "Senior Backend Engineer",
@@ -20,6 +21,7 @@ const SEED_ROLES = [
     description: "Develops scalable microservices, database schemas, message queues, and high-performance server APIs.",
     skillTags: ["Node.js", "MongoDB", "Express", "Distributed Systems"],
     defaultDailyCapHours: 8,
+    evaluationMode: "objective",
   },
   {
     title: "UI/UX Design Specialist",
@@ -27,6 +29,7 @@ const SEED_ROLES = [
     description: "Creates design systems, wireframes, user experience flows, and conducts usability testing.",
     skillTags: ["Figma", "Design Systems", "User Research", "Wireframing"],
     defaultDailyCapHours: 7,
+    evaluationMode: "subjective",
   },
   {
     title: "Growth Copywriter",
@@ -34,6 +37,7 @@ const SEED_ROLES = [
     description: "Crafts high-converting product messaging, user onboarding copy, documentation, and go-to-market content.",
     skillTags: ["Product Messaging", "Content Strategy", "SEO", "User Onboarding"],
     defaultDailyCapHours: 6,
+    evaluationMode: "subjective",
   },
   {
     title: "QA & Test Automation Lead",
@@ -41,6 +45,7 @@ const SEED_ROLES = [
     description: "Oversees test automation frameworks, regression test suites, CI/CD quality gates, and Definition of Done standards.",
     skillTags: ["E2E Testing", "Jest", "Playwright", "CI/CD Gates"],
     defaultDailyCapHours: 8,
+    evaluationMode: "objective",
   },
 ];
 

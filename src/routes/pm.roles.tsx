@@ -20,6 +20,7 @@ import { AppShell } from "@/components/app-shell";
 import { useAuth } from "@/context/AuthContext";
 import { getRoles, createDynamicRole, updateDynamicRole, deleteDynamicRole } from "@/lib/db";
 import type { DynamicRole } from "@/lib/types";
+import { EVALUATION_MODE_STYLES, type EvaluationMode } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/pm/roles")({
@@ -62,6 +63,7 @@ function DynamicRolesPage() {
   const [domain, setDomain] = useState("Engineering");
   const [description, setDescription] = useState("");
   const [defaultCap, setDefaultCap] = useState(8);
+  const [evaluationMode, setEvaluationMode] = useState<EvaluationMode>("objective");
   const [skillTags, setSkillTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
   const [saving, setSaving] = useState(false);
@@ -89,6 +91,7 @@ function DynamicRolesPage() {
     setDomain("Engineering");
     setDescription("");
     setDefaultCap(8);
+    setEvaluationMode("objective");
     setSkillTags(["Node.js", "API Design"]);
     setTagInput("");
     setModalOpen(true);
@@ -100,6 +103,7 @@ function DynamicRolesPage() {
     setDomain(role.domain);
     setDescription(role.description || "");
     setDefaultCap(role.defaultDailyCapHours || 8);
+    setEvaluationMode(role.evaluationMode || "objective");
     setSkillTags(role.skillTags || []);
     setTagInput("");
     setModalOpen(true);
@@ -139,6 +143,7 @@ function DynamicRolesPage() {
           domain: domain.trim(),
           description: description.trim(),
           defaultDailyCapHours: defaultCap,
+          evaluationMode,
           skillTags,
         });
         toast.success(`Role '${title}' updated successfully`);
@@ -148,6 +153,7 @@ function DynamicRolesPage() {
           domain: domain.trim(),
           description: description.trim(),
           defaultDailyCapHours: defaultCap,
+          evaluationMode,
           skillTags,
         });
         toast.success(`New dynamic role '${title}' created`);
@@ -286,15 +292,21 @@ function DynamicRolesPage() {
                   className="flex flex-col justify-between rounded-2xl border border-border/70 bg-card/80 p-5 shadow-xs hover:border-primary/40 hover:shadow-md transition-all group"
                 >
                   <div>
-                    {/* Domain & Cap Header */}
+                    {/* Domain, Evaluation Mode & Cap Header */}
                     <div className="flex items-center justify-between gap-2 mb-3">
                       <span className={cn("inline-flex items-center rounded-lg border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider", domainClass)}>
                         {role.domain}
                       </span>
-                      <span className="inline-flex items-center gap-1 rounded-lg bg-secondary/80 px-2 py-0.5 text-[11px] font-mono font-semibold text-foreground">
-                        <Clock className="size-3 text-primary" />
-                        {role.defaultDailyCapHours || 8}h/day cap
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className={cn("inline-flex items-center gap-1 rounded-lg border px-2 py-0.5 text-[10px] font-medium", EVALUATION_MODE_STYLES[role.evaluationMode || "objective"].badge)}>
+                          <span>{EVALUATION_MODE_STYLES[role.evaluationMode || "objective"].icon}</span>
+                          <span>{EVALUATION_MODE_STYLES[role.evaluationMode || "objective"].shortLabel}</span>
+                        </span>
+                        <span className="inline-flex items-center gap-1 rounded-lg bg-secondary/80 px-2 py-0.5 text-[11px] font-mono font-semibold text-foreground">
+                          <Clock className="size-3 text-primary" />
+                          {role.defaultDailyCapHours || 8}h
+                        </span>
+                      </div>
                     </div>
 
                     {/* Title & Description */}
@@ -437,6 +449,40 @@ function DynamicRolesPage() {
                       />
                       <span className="absolute right-3 top-2 text-xs text-muted-foreground font-mono">hrs</span>
                     </div>
+                  </div>
+                </div>
+
+                {/* QA Definition-of-Done Evaluation Mode */}
+                <div>
+                  <label className="block text-xs font-semibold text-foreground mb-1.5">
+                    QA Definition-of-Done Mode
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {(["objective", "subjective"] as EvaluationMode[]).map((mode) => {
+                      const style = EVALUATION_MODE_STYLES[mode];
+                      const isSelected = evaluationMode === mode;
+                      return (
+                        <button
+                          key={mode}
+                          type="button"
+                          onClick={() => setEvaluationMode(mode)}
+                          className={cn(
+                            "flex flex-col items-start p-2.5 rounded-xl border text-left transition-all cursor-pointer",
+                            isSelected
+                              ? "border-primary/60 bg-primary/10 shadow-xs"
+                              : "border-border bg-secondary/30 hover:border-primary/30"
+                          )}
+                        >
+                          <span className="flex items-center gap-1 text-xs font-bold text-foreground">
+                            <span>{style.icon}</span>
+                            <span>{mode === "objective" ? "Objective (Automated)" : "Subjective (Human)"}</span>
+                          </span>
+                          <span className="text-[10px] text-muted-foreground mt-0.5 leading-snug">
+                            {style.desc}
+                          </span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 

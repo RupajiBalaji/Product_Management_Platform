@@ -386,7 +386,7 @@ function EmployeeDashboard() {
                     <div className="flex items-start justify-between gap-2 mb-1.5">
                       <div className="min-w-0">
                         {proj && (
-                          <div className="flex items-center gap-1.5 mb-1">
+                          <div className="flex items-center gap-1.5 mb-1 flex-wrap">
                             <span className="text-eyebrow text-[9px] text-primary truncate">
                               {proj.title}
                             </span>
@@ -395,6 +395,9 @@ function EmployeeDashboard() {
                                 <Flame className="size-2.5" /> High Priority Focus
                               </span>
                             )}
+                            <span className="inline-flex items-center gap-0.5 rounded border border-border/70 bg-secondary/50 px-1.5 py-0.2 text-[8px] font-mono text-muted-foreground">
+                              ⚡ AI-Graded
+                            </span>
                           </div>
                         )}
                         <h3 className="font-display font-bold text-foreground text-sm truncate">{task.title}</h3>

@@ -42,6 +42,11 @@ const dynamicRoleSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    evaluationMode: {
+      type: String,
+      enum: ["objective", "subjective"],
+      default: "objective",
+    },
   },
   {
     timestamps: { createdAt: "created_at", updatedAt: "updated_at" },
