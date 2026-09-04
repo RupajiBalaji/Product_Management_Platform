@@ -6,7 +6,7 @@ const API_BASE = import.meta.env.VITE_API_URL !== undefined && import.meta.env.V
   : (import.meta.env.PROD ? "" : "http://localhost:5000");
 
 async function getAuthHeaders(): Promise<HeadersInit> {
-  const token = await auth.currentUser?.getIdToken();
+  const token = await auth?.currentUser?.getIdToken?.().catch(() => null);
   return {
     "Content-Type": "application/json",
     ...(token ? { Authorization: `Bearer ${token}` } : {}),

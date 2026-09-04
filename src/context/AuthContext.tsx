@@ -21,6 +21,7 @@ import type { UserProfile, UserType } from "@/lib/types";
 interface AuthContextValue {
   firebaseUser: User | null;
   userProfile: UserProfile | null;
+  isAuthenticated: boolean;
   loading: boolean;
   loginWithEmail: (email: string, pass: string) => Promise<void>;
   registerWithEmail: (
@@ -78,35 +79,53 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
-    // 1. First attempt silent session restore from server HTTP-only cookie
-    getCurrentServerSession().then((existingProfile) => {
-      if (existingProfile) {
-        setUserProfile(existingProfile);
-      }
-    });
+    let isMounted = true;
 
-    // 2. Listen to Firebase Auth state
-    const unsub = onAuthStateChanged(auth, async (user) => {
-      setFirebaseUser(user);
-      if (user) {
-        await establishSession(
-          user.uid,
-          user.email || "",
-          user.displayName || undefined,
-          undefined,
-          user.photoURL || undefined
-        );
-      } else {
-        // If Firebase says logged out, verify if server session still exists
-        const serverSession = await getCurrentServerSession();
-        if (!serverSession) {
-          setUserProfile(null);
+    async function initAuth() {
+      try {
+        const existingProfile = await getCurrentServerSession();
+        if (isMounted && existingProfile) {
+          setUserProfile(existingProfile);
+        }
+      } catch (err) {
+        console.warn("Session restore check:", err);
+      } finally {
+        if (isMounted) {
+          setLoading(false);
         }
       }
-      setLoading(false);
-    });
+    }
 
-    return unsub;
+    initAuth();
+
+    // Listen to Firebase Auth state only if auth is initialized
+    if (auth) {
+      const unsub = onAuthStateChanged(auth, async (user) => {
+        if (!isMounted) return;
+        setFirebaseUser(user);
+        if (user) {
+          await establishSession(
+            user.uid,
+            user.email || "",
+            user.displayName || undefined,
+            undefined,
+            user.photoURL || undefined
+          );
+        }
+        if (isMounted) {
+          setLoading(false);
+        }
+      });
+
+      return () => {
+        isMounted = false;
+        unsub();
+      };
+    }
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const loginWithEmail = async (email: string, pass: string) => {
@@ -116,7 +135,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // 2. Optionally attempt Firebase if key is configured
     try {
-      if (auth?.app?.options?.apiKey) {
+      if (auth) {
         await signInWithEmailAndPassword(auth, email, pass);
       }
     } catch {
@@ -143,7 +162,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // 2. Optionally attempt Firebase if key is configured
     try {
-      if (auth?.app?.options?.apiKey) {
+      if (auth) {
         await createUserWithEmailAndPassword(auth, email, pass);
       }
     } catch {
@@ -152,6 +171,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const loginWithGoogle = async () => {
+    if (!auth || !googleProvider) {
+      throw new Error("Google Sign-In is not configured in this environment. Please sign in with email and password.");
+    }
     const cred = await signInWithPopup(auth, googleProvider);
     await establishSession(
       cred.user.uid,
@@ -174,7 +196,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = async () => {
     await logoutServerSession();
-    await signOut(auth).catch(() => {});
+    if (auth) {
+      await signOut(auth).catch(() => {});
+    }
     setUserProfile(null);
     setFirebaseUser(null);
   };
@@ -184,6 +208,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       value={{
         firebaseUser,
         userProfile,
+        isAuthenticated: Boolean(userProfile || firebaseUser),
         loading,
         loginWithEmail,
         registerWithEmail,

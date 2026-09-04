@@ -8,14 +8,15 @@ export const Route = createFileRoute("/employee")({
 });
 
 function EmployeeGuard() {
-  const { firebaseUser, loading } = useAuth();
+  const { userProfile, firebaseUser, loading } = useAuth();
   const navigate = useNavigate();
+  const isAuthenticated = Boolean(userProfile || firebaseUser);
 
   useEffect(() => {
-    if (!loading && !firebaseUser) {
+    if (!loading && !isAuthenticated) {
       navigate({ to: "/login" });
     }
-  }, [firebaseUser, loading, navigate]);
+  }, [isAuthenticated, loading, navigate]);
 
   if (loading) {
     return (
@@ -25,7 +26,7 @@ function EmployeeGuard() {
     );
   }
 
-  if (!firebaseUser) return null;
+  if (!isAuthenticated) return null;
 
   return <Outlet />;
 }

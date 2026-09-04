@@ -13,7 +13,7 @@ function RootRedirect() {
 
   useEffect(() => {
     if (loading) return;
-    if (!firebaseUser) {
+    if (!userProfile && !firebaseUser) {
       navigate({ to: "/login" });
     } else if (userProfile?.user_type === "employee") {
       navigate({ to: "/employee/dashboard" });
