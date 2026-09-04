@@ -51,13 +51,38 @@ function normalizeDocs<T extends { _id?: string; id?: string }>(docs: T[]): T[] 
 
 // ─── Production Session & Cookie Management ───────────────────────────────────
 
+export async function authRegister(data: {
+  email: string;
+  password: string;
+  full_name: string;
+  role_title?: string;
+  user_type?: UserType;
+}): Promise<UserProfile> {
+  const result = await apiFetch("/api/auth/register", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+  return normalizeDoc(result.user);
+}
+
+export async function authLogin(data: {
+  email: string;
+  password: string;
+}): Promise<UserProfile> {
+  const result = await apiFetch("/api/auth/login", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+  return normalizeDoc(result.user);
+}
+
 export async function createServerSession(userData: {
   uid: string;
   email: string;
   full_name?: string;
   role_title?: string;
   photo_url?: string;
-  user_type?: "pm" | "employee";
+  user_type?: UserType;
 }): Promise<UserProfile> {
   const data = await apiFetch("/api/auth/session", {
     method: "POST",

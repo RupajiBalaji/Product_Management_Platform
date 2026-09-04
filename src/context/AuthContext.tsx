@@ -9,6 +9,8 @@ import {
 } from "firebase/auth";
 import { auth, googleProvider } from "@/lib/firebase";
 import {
+  authRegister,
+  authLogin,
   createServerSession,
   getCurrentServerSession,
   logoutServerSession,
@@ -108,8 +110,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const loginWithEmail = async (email: string, pass: string) => {
-    const cred = await signInWithEmailAndPassword(auth, email, pass);
-    await establishSession(cred.user.uid, cred.user.email || email);
+    // 1. Authenticate via backend API & obtain HTTP-only JWT session cookie
+    const profile = await authLogin({ email, password: pass });
+    setUserProfile(profile);
+
+    // 2. Optionally attempt Firebase if key is configured
+    try {
+      if (auth?.app?.options?.apiKey) {
+        await signInWithEmailAndPassword(auth, email, pass);
+      }
+    } catch {
+      // Ignore Firebase errors since local/MongoDB JWT session is active
+    }
   };
 
   const registerWithEmail = async (
@@ -119,8 +131,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     roleTitle: string = "Product Lead",
     userType: UserType = "product_lead"
   ) => {
-    const cred = await createUserWithEmailAndPassword(auth, email, pass);
-    await establishSession(cred.user.uid, cred.user.email || email, name, roleTitle, undefined, userType);
+    // 1. Register account via backend API & obtain HTTP-only JWT session cookie
+    const profile = await authRegister({
+      email,
+      password: pass,
+      full_name: name,
+      role_title: roleTitle,
+      user_type: userType,
+    });
+    setUserProfile(profile);
+
+    // 2. Optionally attempt Firebase if key is configured
+    try {
+      if (auth?.app?.options?.apiKey) {
+        await createUserWithEmailAndPassword(auth, email, pass);
+      }
+    } catch {
+      // Ignore Firebase errors since local/MongoDB JWT session is active
+    }
   };
 
   const loginWithGoogle = async () => {

@@ -45,6 +45,10 @@ const userSchema = new mongoose.Schema(
       default: "active",
       index: true,
     },
+    password_hash: {
+      type: String,
+      default: "",
+    },
     photo_url: {
       type: String,
       default: "",
@@ -66,6 +70,7 @@ const userSchema = new mongoose.Schema(
 userSchema.methods.toJSON = function () {
   const obj = this.toObject();
   obj.id = obj._id;
+  delete obj.password_hash;
   return obj;
 };
 
