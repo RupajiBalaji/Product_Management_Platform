@@ -15,6 +15,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as PmRouteImport } from './routes/pm'
 import { Route as EmployeeDashboardRouteImport } from './routes/employee.dashboard'
 import { Route as PmAiHubRouteImport } from './routes/pm.ai-hub'
+import { Route as PmCapacityRouteImport } from './routes/pm.capacity'
 import { Route as PmDashboardRouteImport } from './routes/pm.dashboard'
 import { Route as PmEmployeesRouteImport } from './routes/pm.employees'
 import { Route as PmRolesRouteImport } from './routes/pm.roles'
@@ -52,6 +53,11 @@ const EmployeeDashboardRoute = EmployeeDashboardRouteImport.update({
 const PmAiHubRoute = PmAiHubRouteImport.update({
   id: '/ai-hub',
   path: '/ai-hub',
+  getParentRoute: () => PmRoute,
+} as any)
+const PmCapacityRoute = PmCapacityRouteImport.update({
+  id: '/capacity',
+  path: '/capacity',
   getParentRoute: () => PmRoute,
 } as any)
 const PmDashboardRoute = PmDashboardRouteImport.update({
@@ -103,6 +109,7 @@ export interface FileRoutesByFullPath {
   '/pm': typeof PmRouteWithChildren
   '/employee/dashboard': typeof EmployeeDashboardRoute
   '/pm/ai-hub': typeof PmAiHubRoute
+  '/pm/capacity': typeof PmCapacityRoute
   '/pm/dashboard': typeof PmDashboardRoute
   '/pm/employees': typeof PmEmployeesRouteWithChildren
   '/pm/roles': typeof PmRolesRoute
@@ -119,6 +126,7 @@ export interface FileRoutesByTo {
   '/pm': typeof PmRouteWithChildren
   '/employee/dashboard': typeof EmployeeDashboardRoute
   '/pm/ai-hub': typeof PmAiHubRoute
+  '/pm/capacity': typeof PmCapacityRoute
   '/pm/dashboard': typeof PmDashboardRoute
   '/pm/employees': typeof PmEmployeesRouteWithChildren
   '/pm/roles': typeof PmRolesRoute
@@ -136,6 +144,7 @@ export interface FileRoutesById {
   '/pm': typeof PmRouteWithChildren
   '/employee/dashboard': typeof EmployeeDashboardRoute
   '/pm/ai-hub': typeof PmAiHubRoute
+  '/pm/capacity': typeof PmCapacityRoute
   '/pm/dashboard': typeof PmDashboardRoute
   '/pm/employees': typeof PmEmployeesRouteWithChildren
   '/pm/roles': typeof PmRolesRoute
@@ -154,6 +163,7 @@ export interface FileRouteTypes {
     | '/pm'
     | '/employee/dashboard'
     | '/pm/ai-hub'
+    | '/pm/capacity'
     | '/pm/dashboard'
     | '/pm/employees'
     | '/pm/roles'
@@ -170,6 +180,7 @@ export interface FileRouteTypes {
     | '/pm'
     | '/employee/dashboard'
     | '/pm/ai-hub'
+    | '/pm/capacity'
     | '/pm/dashboard'
     | '/pm/employees'
     | '/pm/roles'
@@ -186,6 +197,7 @@ export interface FileRouteTypes {
     | '/pm'
     | '/employee/dashboard'
     | '/pm/ai-hub'
+    | '/pm/capacity'
     | '/pm/dashboard'
     | '/pm/employees'
     | '/pm/roles'
@@ -245,6 +257,13 @@ declare module '@tanstack/react-router' {
       path: '/ai-hub'
       fullPath: '/pm/ai-hub'
       preLoaderRoute: typeof PmAiHubRouteImport
+      parentRoute: typeof PmRoute
+    }
+    '/pm/capacity': {
+      id: '/pm/capacity'
+      path: '/capacity'
+      fullPath: '/pm/capacity'
+      preLoaderRoute: typeof PmCapacityRouteImport
       parentRoute: typeof PmRoute
     }
     '/pm/dashboard': {
@@ -345,6 +364,7 @@ const PmProjectsProjectIdRouteWithChildren =
 
 interface PmRouteChildren {
   PmAiHubRoute: typeof PmAiHubRoute
+  PmCapacityRoute: typeof PmCapacityRoute
   PmDashboardRoute: typeof PmDashboardRoute
   PmEmployeesRoute: typeof PmEmployeesRouteWithChildren
   PmRolesRoute: typeof PmRolesRoute
@@ -354,6 +374,7 @@ interface PmRouteChildren {
 
 const PmRouteChildren: PmRouteChildren = {
   PmAiHubRoute: PmAiHubRoute,
+  PmCapacityRoute: PmCapacityRoute,
   PmDashboardRoute: PmDashboardRoute,
   PmEmployeesRoute: PmEmployeesRouteWithChildren,
   PmRolesRoute: PmRolesRoute,

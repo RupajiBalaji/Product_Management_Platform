@@ -49,11 +49,19 @@ Traditional enterprise project management tools (Jira, Asana, Monday.com) are fr
 - **Prerequisite Delete Guard**: Blocks deletion of any task if other downstream tasks depend on it, preventing dangling references.
 - **DAG Topology Visualizer**: Interactive topology viewer breaking project work into Independent Roots (Ready to Execute) and Chained Milestones.
 
-### 4. 📅 Interactive Calendar Matrix GUI
+### 4. ⚖️ Global Capacity Registry & Priority Conflict Resolution (Phase 3)
+- **P1/P2/P3 Priority Governance Model**: Single-source-of-truth priority classification: P1 (Mission-Critical), P2 (High-Value), P3 (Strategic).
+- **Global Allocation Ledger (`server/lib/capacityRegistry.js`)**: Real-time aggregation of daily hour commitments across all active initiatives compared against per-user or dynamic-role capacity caps.
+- **Capacity Conflict Gate**: Intercepts `POST /api/projects/:id/members`, evaluating total load against max daily capacity and returning HTTP 409 with overflow metrics and priority-weighted resolution recommendations.
+- **Priority-Weighted Displacement Suggestions**: Lower-priority projects yield hours to higher-priority incoming work; P1 projects are strictly protected from displacement by P2/P3 requests.
+- **Sovereign Override & Audit Protection**: Product Leads can force-override capacity conflicts (`force: true`), recording an immutable `CAPACITY_OVERRIDDEN` event in the append-only `AuditLog`.
+- **Global Capacity Ledger View (`/pm/capacity`)**: Dedicated portfolio table showing real-time utilization bars, over-allocation alerts, and commitment breakdowns.
+
+### 5. 📅 Interactive Calendar Matrix GUI
 - **Day-by-Day Contributor Matrix**: Interactive grid showing real-time contributor status (`Completed`, `In Progress`, `Blocked`, `No Log`).
 - **Instant Log Inspector Modal**: Click any log cell to inspect submitted deliverables, actual hours spent, blocker descriptions, and PR links.
 
-### 5. 👥 Employee 360 & Workload Capacity Engine
+### 6. 👥 Employee 360 & Workload Capacity Engine
 - **Capacity Gauge**: Visual circular gauge displaying real-time allocation percentage across all active projects.
 - **Multi-Project Team Allocation**: Add and remove contributors from projects with automatic role matching.
 - **High-Priority Project Guardrail**: Mark critical initiatives as **High Priority** so developers with multiple commitments know where to focus first.

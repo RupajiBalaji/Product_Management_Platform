@@ -15,6 +15,7 @@ import {
   Bot,
   ShieldCheck,
   Cpu,
+  Gauge,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { useAuth } from "@/context/AuthContext";
@@ -28,6 +29,7 @@ import { AICopilotSidebar } from "./AICopilotSidebar";
 const productLeadNav = [
   { to: "/pm/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/pm/projects", label: "Projects & Tasks", icon: FolderKanban },
+  { to: "/pm/capacity", label: "Capacity Registry", icon: Gauge },
   { to: "/pm/roles", label: "Dynamic Roles", icon: ShieldCheck },
   { to: "/pm/employees", label: "Workforce Directory", icon: Users },
   { to: "/pm/ai-hub", label: "AI Summary Hub", icon: Sparkles },
@@ -36,6 +38,7 @@ const productLeadNav = [
 const leadArchitectNav = [
   { to: "/pm/dashboard", label: "Architecture & Projects", icon: LayoutDashboard },
   { to: "/pm/projects", label: "Projects & Tasks", icon: FolderKanban },
+  { to: "/pm/capacity", label: "Capacity Registry", icon: Gauge },
   { to: "/pm/employees", label: "Workforce Directory", icon: Users },
   { to: "/pm/ai-hub", label: "AI Summary Hub", icon: Sparkles },
 ];

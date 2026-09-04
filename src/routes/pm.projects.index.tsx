@@ -1,29 +1,26 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Plus, FolderKanban, X, Loader2, ArrowRight, CalendarDays, Flame, AlertCircle, Users, Filter } from "lucide-react";
+import { Plus, FolderKanban, X, Loader2, ArrowRight, CalendarDays, Users, Filter } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/app-shell";
 import { getAllProjects, createProject, getAllEmployees } from "@/lib/db";
 import { useAuth } from "@/context/AuthContext";
-import type { Project, UserProfile, ProjectPriority } from "@/lib/types";
+import type { Project, UserProfile } from "@/lib/types";
+import type { ProjectPriority } from "@/lib/constants";
+import { PRIORITY_STYLES, PRIORITY_ORDER, isElevatedPriority, normalizePriority } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 
-export const Route = createFileRoute("/pm/projects/")({
+export const Route = createFileRoute("/pm/projects/")(({
   component: ProjectsPage,
-});
+}));
 
 const statusColor: Record<Project["status"], string> = {
   active: "bg-success/15 text-success border-success/30",
   "in-review": "bg-warning/15 text-warning border-warning/30",
   completed: "bg-muted text-muted-foreground border-border",
-};
-
-const priorityBadge: Record<ProjectPriority, { label: string; className: string; icon?: any }> = {
-  critical: { label: "Critical Priority", className: "bg-red-500/20 text-red-400 border-red-500/40 font-bold", icon: Flame },
-  high: { label: "High Priority", className: "bg-amber-500/20 text-amber-400 border-amber-500/40 font-bold", icon: Flame },
-  medium: { label: "Medium", className: "bg-blue-500/15 text-blue-400 border-blue-500/30", icon: null },
-  low: { label: "Low Priority", className: "bg-muted text-muted-foreground border-border", icon: null },
+  frozen: "bg-muted text-muted-foreground border-border",
+  archived: "bg-muted/50 text-muted-foreground/60 border-border/50",
 };
 
 function ProjectsPage() {
@@ -53,7 +50,7 @@ function ProjectsPage() {
 
   const filteredProjects = projects.filter((p) => {
     if (priorityFilter === "all") return true;
-    return (p.priority || "medium") === priorityFilter;
+    return normalizePriority(p.priority) === priorityFilter;
   });
 
   return (
@@ -75,20 +72,23 @@ function ProjectsPage() {
           <span className="text-eyebrow text-[10px] text-muted-foreground mr-1 flex items-center gap-1">
             <Filter className="size-3" /> Priority:
           </span>
-          {["all", "high", "critical", "medium", "low"].map((prio) => (
-            <button
-              key={prio}
-              onClick={() => setPriorityFilter(prio)}
-              className={cn(
-                "rounded-lg px-3 py-1 text-xs font-semibold capitalize transition-all cursor-pointer",
-                priorityFilter === prio
-                  ? "bg-primary text-primary-foreground shadow-xs"
-                  : "border border-border bg-card text-muted-foreground hover:text-foreground"
-              )}
-            >
-              {prio === "all" ? "All Priorities" : prio === "high" ? "🔥 High Priority" : prio === "critical" ? "⚡ Critical" : prio}
-            </button>
-          ))}
+          {["all", ...PRIORITY_ORDER].map((prio) => {
+            const style = prio !== "all" ? PRIORITY_STYLES[prio as ProjectPriority] : null;
+            return (
+              <button
+                key={prio}
+                onClick={() => setPriorityFilter(prio)}
+                className={cn(
+                  "rounded-lg px-3 py-1 text-xs font-semibold transition-all cursor-pointer",
+                  priorityFilter === prio
+                    ? "bg-primary text-primary-foreground shadow-xs"
+                    : "border border-border bg-card text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {prio === "all" ? "All Priorities" : style ? `${style.icon} ${prio} — ${style.shortLabel.replace(`${prio} `, "")}` : prio}
+              </button>
+            );
+          })}
         </div>
 
         <span className="text-xs font-mono text-muted-foreground">
@@ -119,9 +119,9 @@ function ProjectsPage() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {filteredProjects.map((p) => {
-            const prio = priorityBadge[p.priority || "medium"];
-            const PrioIcon = prio.icon;
-            const isHighPriority = p.priority === "high" || p.priority === "critical";
+            const priority = normalizePriority(p.priority);
+            const prio = PRIORITY_STYLES[priority];
+            const isHigh = isElevatedPriority(priority);
 
             return (
               <Link
@@ -130,7 +130,7 @@ function ProjectsPage() {
                 params={{ projectId: p.id }}
                 className={cn(
                   "panel p-5 flex flex-col justify-between hover:border-primary/50 transition-all group cursor-pointer relative",
-                  isHighPriority && "border-amber-500/40 bg-gradient-to-b from-amber-500/5 to-transparent"
+                  isHigh && "border-amber-500/40 bg-gradient-to-b from-amber-500/5 to-transparent"
                 )}
               >
                 <div>
@@ -141,23 +141,23 @@ function ProjectsPage() {
                     <span
                       className={cn(
                         "shrink-0 rounded-full border px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider",
-                        statusColor[p.status]
+                        statusColor[p.status] || statusColor["active"]
                       )}
                     >
                       {p.status}
                     </span>
                   </div>
 
-                  {/* Priority Tag */}
+                  {/* Priority Tag — P1/P2/P3 */}
                   <div className="mb-3">
                     <span
                       className={cn(
                         "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] tracking-wide",
-                        prio.className
+                        prio.badge
                       )}
                     >
-                      {PrioIcon && <PrioIcon className="size-3" />}
-                      <span>{prio.label}</span>
+                      <span>{prio.icon}</span>
+                      <span>{priority} — {prio.shortLabel.replace(`${priority} `, "")}</span>
                     </span>
                   </div>
 
@@ -214,7 +214,7 @@ function CreateProjectModal({
 }) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [priority, setPriority] = useState<ProjectPriority>("high");
+  const [priority, setPriority] = useState<ProjectPriority>("P2");
   const [memberIds, setMemberIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -248,7 +248,7 @@ function CreateProjectModal({
         <div className="flex items-center justify-between mb-5">
           <div>
             <h2 className="font-display text-lg font-bold text-foreground">Create New Project</h2>
-            <p className="text-eyebrow text-[10px]">Set priority and allocate team members</p>
+            <p className="text-eyebrow text-[10px]">Set priority tier and allocate team members</p>
           </div>
           <button onClick={onClose} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted cursor-pointer">
             <X className="size-5" />
@@ -280,32 +280,37 @@ function CreateProjectModal({
             />
           </div>
 
-          {/* Priority Selection */}
+          {/* P1/P2/P3 Priority Selection */}
           <div>
-            <label className="text-eyebrow mb-1.5 block">Project Priority Level</label>
-            <div className="grid grid-cols-4 gap-2">
-              {[
-                { id: "critical", label: "⚡ Critical", desc: "Immediate focus" },
-                { id: "high", label: "🔥 High", desc: "Top priority" },
-                { id: "medium", label: "Medium", desc: "Standard track" },
-                { id: "low", label: "Low", desc: "Low urgency" },
-              ].map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => setPriority(p.id as ProjectPriority)}
-                  className={cn(
-                    "flex flex-col items-center justify-center rounded-xl border py-2.5 px-2 text-center transition-all cursor-pointer",
-                    priority === p.id
-                      ? "border-primary bg-primary/15 text-primary font-bold shadow-xs"
-                      : "border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-foreground"
-                  )}
-                >
-                  <span className="text-xs font-semibold">{p.label}</span>
-                  <span className="text-[9px] text-muted-foreground mt-0.5">{p.desc}</span>
-                </button>
-              ))}
+            <label className="text-eyebrow mb-1.5 block">Project Priority Tier</label>
+            <div className="grid grid-cols-3 gap-2">
+              {PRIORITY_ORDER.map((p) => {
+                const style = PRIORITY_STYLES[p];
+                return (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => setPriority(p)}
+                    className={cn(
+                      "flex flex-col items-center justify-center rounded-xl border py-3 px-2 text-center transition-all cursor-pointer",
+                      priority === p
+                        ? `${style.border} ${style.bg} ${style.text} font-bold shadow-xs`
+                        : "border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                    )}
+                  >
+                    <span className="text-lg">{style.icon}</span>
+                    <span className="text-xs font-bold mt-0.5">{p}</span>
+                    <span className="text-[9px] text-muted-foreground mt-0.5">{PRIORITY_STYLES[p].shortLabel.replace(`${p} `, "")}</span>
+                  </button>
+                );
+              })}
             </div>
+            <p className="text-[10px] text-muted-foreground mt-1.5">
+              {PRIORITY_STYLES[priority].label}
+              {priority === "P1" && " — Revenue-impacting, client-facing deadlines, hard stops"}
+              {priority === "P2" && " — Important milestones, flexible timeline"}
+              {priority === "P3" && " — Long-term strategic investment, no hard deadline"}
+            </p>
           </div>
 
           {/* Team Allocation */}

@@ -2,8 +2,9 @@ import { cn } from "@/lib/utils";
 
 export { cn };
 
+// Re-export ProjectPriority from constants as the canonical type
+export type { ProjectPriority } from "@/lib/constants";
 export type UserType = "product_lead" | "lead_architect" | "employee" | "pm";
-export type ProjectPriority = "low" | "medium" | "high" | "critical";
 export type ProjectStatus = "active" | "in-review" | "completed" | "frozen" | "archived";
 
 export interface DynamicRole {
@@ -42,7 +43,8 @@ export interface UserProfile {
   activeTasksInThisProject?: number;
   dynamicRole?: DynamicRole | null;
   allocatedDailyHours?: number;
-  assignedProjects?: Array<{ _id: string; title: string; status: string; priority: ProjectPriority }>;
+  defaultDailyCapHours?: number;
+  assignedProjects?: Array<{ _id: string; title: string; status: string; priority: import("@/lib/constants").ProjectPriority }>;
   created_at: string;
 }
 
@@ -53,7 +55,7 @@ export interface Project {
   description: string;
   created_by: string;
   status: ProjectStatus;
-  priority: ProjectPriority;
+  priority: import("@/lib/constants").ProjectPriority;
   member_ids: string[];
   team_allocations?: TeamAllocation[];
   members?: UserProfile[];
@@ -86,4 +88,52 @@ export interface DailyLog {
   has_worked: boolean;
   no_work_reason: string;
   created_at: string;
+}
+
+// ─── Phase 3: Capacity Registry Types ────────────────────────────────────────
+
+export interface CapacityAllocationEntry {
+  projectId: string;
+  projectTitle: string;
+  priority: import("@/lib/constants").ProjectPriority;
+  dailyHours: number;
+}
+
+export interface EmployeeCapacity {
+  userId: string;
+  name?: string;
+  email?: string;
+  totalDailyHours: number;
+  dailyCap: number;
+  utilizationPct: number;
+  isOverAllocated: boolean;
+  projects: CapacityAllocationEntry[];
+}
+
+export interface CapacityConflict {
+  hasConflict: true;
+  currentTotal: number;
+  dailyCap: number;
+  overflowHours: number;
+  conflictingProjects: CapacityAllocationEntry[];
+  resolutionSuggestion: CapacityResolutionSuggestion;
+}
+
+export interface CapacityOk {
+  hasConflict: false;
+}
+
+export type CapacityCheckResult = CapacityConflict | CapacityOk;
+
+export interface CapacityResolutionSuggestion {
+  resolvable: boolean;
+  reason?: string;
+  reductions: Array<{
+    projectId: string;
+    projectTitle: string;
+    currentHours: number;
+    suggestedHours: number;
+    reduceBy: number;
+    priority: import("@/lib/constants").ProjectPriority;
+  }>;
 }

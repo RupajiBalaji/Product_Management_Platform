@@ -18,19 +18,13 @@ import {
 import { AppShell } from "@/components/app-shell";
 import { useAuth } from "@/context/AuthContext";
 import { getEmployeeProjects, getMyTasks, getDailyLog, getLogsByEmployee } from "@/lib/db";
-import type { Task, Project, DailyLog, ProjectPriority } from "@/lib/types";
+import type { Task, Project, DailyLog } from "@/lib/types";
+import { PRIORITY_STYLES, PRIORITY_WEIGHT, normalizePriority, isElevatedPriority } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/employee/dashboard")({
   component: EmployeeDashboard,
 });
-
-const priorityBadgeStyles: Record<ProjectPriority, { label: string; bg: string; text: string; border: string }> = {
-  critical: { label: "⚡ Critical", bg: "bg-red-500/20", text: "text-red-400 font-bold", border: "border-red-500/40" },
-  high: { label: "🔥 High Priority", bg: "bg-amber-500/20", text: "text-amber-400 font-bold", border: "border-amber-500/40" },
-  medium: { label: "Medium", bg: "bg-blue-500/15", text: "text-blue-400", border: "border-blue-500/30" },
-  low: { label: "Low", bg: "bg-muted", text: "text-muted-foreground", border: "border-border" },
-};
 
 function EmployeeDashboard() {
   const { userProfile } = useAuth();
@@ -53,10 +47,9 @@ function EmployeeDashboard() {
         userProfile ? getLogsByEmployee(userProfile.id) : Promise.resolve([]),
       ]);
 
-      // Sort projects with High / Critical priority first
-      const priorityWeight: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1 };
+      // Sort projects with P1 / P2 priority first
       const sortedProjs = [...projs].sort(
-        (a, b) => (priorityWeight[b.priority || "medium"] || 2) - (priorityWeight[a.priority || "medium"] || 2)
+        (a, b) => (PRIORITY_WEIGHT[normalizePriority(b.priority)] || 0) - (PRIORITY_WEIGHT[normalizePriority(a.priority)] || 0)
       );
 
       setProjects(sortedProjs);
@@ -94,15 +87,15 @@ function EmployeeDashboard() {
       if (selectedProjectId !== "all" && String(t.project_id) !== String(selectedProjectId)) return false;
       if (onlyHighPriority) {
         const proj = projectMap.get(String(t.project_id));
-        return proj?.priority === "high" || proj?.priority === "critical";
+        return isElevatedPriority(normalizePriority(proj?.priority));
       }
       return true;
     })
     .sort((a, b) => {
       const projA = projectMap.get(String(a.project_id));
       const projB = projectMap.get(String(b.project_id));
-      const isHighA = projA?.priority === "high" || projA?.priority === "critical" ? 1 : 0;
-      const isHighB = projB?.priority === "high" || projB?.priority === "critical" ? 1 : 0;
+      const isHighA = isElevatedPriority(normalizePriority(projA?.priority)) ? 1 : 0;
+      const isHighB = isElevatedPriority(normalizePriority(projB?.priority)) ? 1 : 0;
       return isHighB - isHighA; // High priority tasks first
     });
 
@@ -113,7 +106,7 @@ function EmployeeDashboard() {
   const consistencyScore = logs.length > 0 ? Math.round((workedLogs.length / logs.length) * 100) : 100;
 
   // Check if developer has any high priority project
-  const highPriorityProjects = projects.filter((p) => p.priority === "high" || p.priority === "critical");
+  const highPriorityProjects = projects.filter((p) => isElevatedPriority(normalizePriority(p.priority)));
 
   return (
     <AppShell
@@ -239,8 +232,9 @@ function EmployeeDashboard() {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {projects.map((proj) => {
               const projTasks = tasks.filter((t) => String(t.project_id) === String(proj.id));
-              const isHigh = proj.priority === "high" || proj.priority === "critical";
-              const prioMeta = priorityBadgeStyles[proj.priority || "medium"];
+              const priority = normalizePriority(proj.priority);
+              const isHigh = isElevatedPriority(priority);
+              const prioMeta = PRIORITY_STYLES[priority];
 
               return (
                 <div
@@ -264,12 +258,10 @@ function EmployeeDashboard() {
                       <span
                         className={cn(
                           "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px]",
-                          prioMeta.bg,
-                          prioMeta.text,
-                          prioMeta.border
+                          prioMeta.badge
                         )}
                       >
-                        {isHigh && <Flame className="size-2.5" />}
+                        <span>{prioMeta.icon}</span>
                         <span>{prioMeta.label}</span>
                       </span>
                     </div>
@@ -354,7 +346,7 @@ function EmployeeDashboard() {
                     : "border border-border bg-card text-muted-foreground hover:text-foreground"
                 )}
               >
-                {(p.priority === "high" || p.priority === "critical") && "🔥 "}
+                {(isElevatedPriority(normalizePriority(p.priority))) && "🔥 "}
                 {p.title.split(" ")[0]}
               </button>
             ))}
@@ -379,7 +371,7 @@ function EmployeeDashboard() {
               const daysLeft = differenceInDays(parseISO(task.end_date), new Date());
               const logged = todayLogged[task.id];
               const proj = projectMap.get(String(task.project_id));
-              const isHighPrio = proj?.priority === "high" || proj?.priority === "critical";
+              const isHighPrio = isElevatedPriority(normalizePriority(proj?.priority));
 
               return (
                 <div

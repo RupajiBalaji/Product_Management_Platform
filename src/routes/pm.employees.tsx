@@ -19,6 +19,7 @@ import { toast } from "sonner";
 import { AppShell } from "@/components/app-shell";
 import { getAllEmployees, createEmployee, deleteEmployee, getWorkforceStats } from "@/lib/db";
 import type { UserProfile } from "@/lib/types";
+import { isElevatedPriority, normalizePriority } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/pm/employees")({
@@ -160,7 +161,7 @@ function EmployeesPage() {
           {employees.map((emp) => {
             const assignedProjects = emp.assignedProjects || [];
             const hasMultiple = assignedProjects.length > 1;
-            const hasHighPriority = assignedProjects.some((p) => p.priority === "high" || p.priority === "critical");
+            const hasHighPriority = assignedProjects.some((p) => isElevatedPriority(normalizePriority(p.priority)));
 
             return (
               <div
@@ -241,20 +242,24 @@ function EmployeesPage() {
                       <span className="text-xs text-muted-foreground italic">No projects allocated yet.</span>
                     ) : (
                       <div className="flex flex-wrap gap-1 max-h-16 overflow-y-auto">
-                        {assignedProjects.map((p) => (
-                          <span
-                            key={p._id}
-                            className={cn(
-                              "rounded-md border px-2 py-0.5 text-[10px] font-medium truncate max-w-[200px]",
-                              p.priority === "high" || p.priority === "critical"
-                                ? "border-amber-500/40 bg-amber-500/10 text-amber-300 font-semibold"
-                                : "border-border bg-elevated text-foreground"
-                            )}
-                          >
-                            {(p.priority === "high" || p.priority === "critical") && "🔥 "}
-                            {p.title}
-                          </span>
-                        ))}
+                        {assignedProjects.map((p) => {
+                          const priority = normalizePriority(p.priority);
+                          const isHigh = isElevatedPriority(priority);
+                          return (
+                            <span
+                              key={p._id}
+                              className={cn(
+                                "rounded-md border px-2 py-0.5 text-[10px] font-medium truncate max-w-[200px]",
+                                isHigh
+                                  ? "border-amber-500/40 bg-amber-500/10 text-amber-300 font-semibold"
+                                  : "border-border bg-elevated text-foreground"
+                              )}
+                            >
+                              {isHigh && "🔥 "}
+                              {p.title}
+                            </span>
+                          );
+                        })}
                       </div>
                     )}
                   </div>

@@ -244,11 +244,12 @@ export async function addProjectMember(
   projectId: string,
   userId: string,
   roleId?: string,
-  dailyHours?: number
+  dailyHours?: number,
+  force?: boolean
 ): Promise<Project & { members?: UserProfile[] }> {
   const data = await apiFetch(`/api/projects/${projectId}/members`, {
     method: "POST",
-    body: JSON.stringify({ userId, roleId, dailyHours }),
+    body: JSON.stringify({ userId, roleId, dailyHours, force }),
   });
   return {
     ...normalizeDoc(data),
@@ -535,4 +536,23 @@ export async function generateDimensionSummary(params: {
     body: JSON.stringify(params),
   });
   return data.summary;
+}
+
+// ─── Phase 3: Capacity Registry ───────────────────────────────────────────────
+
+export async function getCapacityForUser(userId: string) {
+  try {
+    return await apiFetch(`/api/capacity/${userId}`);
+  } catch {
+    return null;
+  }
+}
+
+export async function getCapacityDashboard(): Promise<import("@/lib/types").EmployeeCapacity[]> {
+  try {
+    const data = await apiFetch("/api/capacity/dashboard");
+    return data.data || [];
+  } catch {
+    return [];
+  }
 }

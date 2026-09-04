@@ -22,6 +22,8 @@ import {
   Trash2,
   CheckCircle2,
   AlertCircle,
+  AlertTriangle,
+  ShieldAlert,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format, parseISO, differenceInDays } from "date-fns";
@@ -40,19 +42,14 @@ import {
   removeProjectMember,
   updateProjectPriority,
 } from "@/lib/db";
-import type { Project, Task, UserProfile, ProjectPriority, DynamicRole } from "@/lib/types";
+import type { Project, Task, UserProfile, DynamicRole } from "@/lib/types";
+import type { ProjectPriority } from "@/lib/constants";
+import { PRIORITY_STYLES, PRIORITY_ORDER, normalizePriority, isElevatedPriority } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/pm/projects/$projectId")({
   component: ProjectDetailPage,
 });
-
-const priorityStyles: Record<ProjectPriority, { label: string; bg: string; text: string; border: string }> = {
-  critical: { label: "⚡ Critical Priority", bg: "bg-red-500/15", text: "text-red-400", border: "border-red-500/40" },
-  high: { label: "🔥 High Priority", bg: "bg-amber-500/15", text: "text-amber-400", border: "border-amber-500/40" },
-  medium: { label: "Medium Priority", bg: "bg-blue-500/15", text: "text-blue-400", border: "border-blue-500/30" },
-  low: { label: "Low Priority", bg: "bg-muted", text: "text-muted-foreground", border: "border-border" },
-};
 
 function ProjectDetailPage() {
   const { projectId } = Route.useParams();
@@ -70,6 +67,10 @@ function ProjectDetailPage() {
   const [selectedNewMember, setSelectedNewMember] = useState("");
   const [memberLoading, setMemberLoading] = useState(false);
   const [priorityLoading, setPriorityLoading] = useState(false);
+  const [capacityConflict, setCapacityConflict] = useState<any | null>(null);
+  const [pendingAllocation, setPendingAllocation] = useState<{
+    userId: string; roleId?: string; dailyHours: number;
+  } | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -100,7 +101,7 @@ function ProjectDetailPage() {
     try {
       const updated = await updateProjectPriority(projectId, newPriority);
       setProject((prev) => (prev ? { ...prev, priority: updated.priority } : null));
-      toast.success(`Project priority set to: ${newPriority.toUpperCase()} 🔥`);
+      toast.success(`Project priority set to: ${newPriority} — ${PRIORITY_STYLES[newPriority]?.shortLabel || newPriority}`);
     } catch (err: any) {
       toast.error(err.message || "Failed to update priority");
     } finally {
@@ -123,9 +124,46 @@ function ProjectDetailPage() {
       setSelectedNewMember("");
       setSelectedRoleId("");
       setDailyHoursAllocated(8);
+      setCapacityConflict(null);
+      setPendingAllocation(null);
       toast.success("Team member allocated with dynamic role!");
     } catch (err: any) {
-      toast.error(err.message || "Failed to add member");
+      if (err.status === 409 && err.data?.error === "Capacity conflict") {
+        // Show capacity conflict panel instead of toast
+        setCapacityConflict(err.data);
+        setPendingAllocation({
+          userId: selectedNewMember,
+          roleId: selectedRoleId || undefined,
+          dailyHours: dailyHoursAllocated,
+        });
+      } else {
+        toast.error(err.message || "Failed to add member");
+      }
+    } finally {
+      setMemberLoading(false);
+    }
+  };
+
+  const handleForceAllocate = async () => {
+    if (!pendingAllocation) return;
+    setMemberLoading(true);
+    try {
+      const updated = await addProjectMember(
+        projectId,
+        pendingAllocation.userId,
+        pendingAllocation.roleId,
+        pendingAllocation.dailyHours,
+        true // force override
+      );
+      setProject(updated);
+      setSelectedNewMember("");
+      setSelectedRoleId("");
+      setDailyHoursAllocated(8);
+      setCapacityConflict(null);
+      setPendingAllocation(null);
+      toast.success("Capacity override applied. Member allocated (CAPACITY_OVERRIDDEN logged to AuditLog).");
+    } catch (err: any) {
+      toast.error(err.message || "Force override failed");
     } finally {
       setMemberLoading(false);
     }
@@ -172,8 +210,8 @@ function ProjectDetailPage() {
     : allEmployees.filter((e) => assignedMemberIds.includes(e.id));
   const availableToAdd = allEmployees.filter((e) => !assignedMemberIds.includes(e.id));
 
-  const currentPriority = project?.priority || "medium";
-  const prioMeta = priorityStyles[currentPriority];
+  const currentPriority = normalizePriority(project?.priority);
+  const prioMeta = PRIORITY_STYLES[currentPriority];
 
   return (
     <AppShell
@@ -181,7 +219,7 @@ function ProjectDetailPage() {
       title={project?.title || "Loading Project…"}
       actions={
         <div className="flex flex-wrap items-center gap-2">
-          {/* Live Priority Dropdown Selector */}
+          {/* Live Priority Dropdown Selector — P1/P2/P3 */}
           <div className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-2.5 py-1 text-xs">
             <span className="text-muted-foreground font-medium text-[11px]">Priority:</span>
             <select
@@ -193,10 +231,9 @@ function ProjectDetailPage() {
                 prioMeta.text
               )}
             >
-              <option value="critical">⚡ Critical</option>
-              <option value="high">🔥 High Priority</option>
-              <option value="medium">Medium</option>
-              <option value="low">Low</option>
+              <option value="P1">⚡ P1 — Mission-Critical</option>
+              <option value="P2">🔥 P2 — High-Value</option>
+              <option value="P3">📌 P3 — Strategic</option>
             </select>
           </div>
 
@@ -234,26 +271,35 @@ function ProjectDetailPage() {
         </div>
       ) : (
         <>
-          {/* Priority Notice Banner if High/Critical */}
-          {(currentPriority === "high" || currentPriority === "critical") && (
-            <div className="panel p-4 mb-6 border-l-4 border-l-amber-500 bg-amber-500/10 flex items-center justify-between gap-3">
+          {/* Priority Notice Banner for P1/P2 */}
+          {isElevatedPriority(currentPriority) && (
+            <div className={cn(
+              "panel p-4 mb-6 border-l-4 flex items-center justify-between gap-3",
+              currentPriority === "P1"
+                ? "border-l-red-500 bg-red-500/10"
+                : "border-l-amber-500 bg-amber-500/10"
+            )}>
               <div className="flex items-center gap-3">
-                <Flame className="size-5 text-amber-400 shrink-0 animate-pulse" />
+                <Flame className={cn("size-5 shrink-0 animate-pulse", currentPriority === "P1" ? "text-red-400" : "text-amber-400")} />
                 <div>
                   <p className="font-display font-bold text-sm text-foreground">
-                    🔥 High Priority Project Active
+                    {prioMeta.icon} {prioMeta.shortLabel} Project Active
                   </p>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    Assigned developers will see this project elevated at the top of their dashboard to focus on first.
+                    {currentPriority === "P1"
+                      ? "Mission-Critical: Assigned developers see this project at the top of their dashboard. Revenue or client deadlines at stake."
+                      : "High-Value: Elevated team focus. Developers will see this project prioritized in their task queue."}
                   </p>
                 </div>
               </div>
-              <span className="rounded-full border border-amber-500/40 bg-amber-500/20 px-2.5 py-1 text-[10px] font-mono font-bold text-amber-300 uppercase tracking-wider shrink-0">
-                Top Priority Focus
+              <span className={cn(
+                "rounded-full border px-2.5 py-1 text-[10px] font-mono font-bold uppercase tracking-wider shrink-0",
+                prioMeta.badge
+              )}>
+                {prioMeta.shortLabel}
               </span>
             </div>
           )}
-
           {/* Project Details & Team Summary Card */}
           <div className="panel p-6 mb-6">
             <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-6">
@@ -658,6 +704,74 @@ function ProjectDetailPage() {
                 </p>
               )}
             </form>
+
+            {/* ── Capacity Conflict Panel (Phase 3) ────────────────────────── */}
+            {capacityConflict && (
+              <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-xs space-y-3 animate-in fade-in">
+                <div className="flex items-start gap-2.5">
+                  <AlertTriangle className="size-4 shrink-0 mt-0.5 text-destructive" />
+                  <div>
+                    <p className="font-bold text-destructive text-sm">Capacity Conflict Detected</p>
+                    <p className="text-[11px] mt-1 opacity-90 leading-relaxed">{capacityConflict.message}</p>
+                  </div>
+                </div>
+
+                {/* Conflicting projects */}
+                {(capacityConflict.conflictingProjects || []).length > 0 && (
+                  <div className="space-y-1.5">
+                    <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">Current Active Allocations:</p>
+                    {capacityConflict.conflictingProjects.map((p: any) => (
+                      <div key={p.projectId} className="flex items-center justify-between rounded-lg border border-border/60 bg-card/60 px-2.5 py-1.5">
+                        <span className="font-medium text-foreground truncate">{p.projectTitle}</span>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className={cn("text-[9px] font-mono px-1.5 py-0.5 rounded border",
+                            p.priority === "P1" ? "bg-red-500/15 text-red-400 border-red-500/30" :
+                            p.priority === "P2" ? "bg-amber-500/15 text-amber-400 border-amber-500/30" :
+                            "bg-blue-500/15 text-blue-400 border-blue-500/30"
+                          )}>{p.priority}</span>
+                          <span className="font-mono text-[10px] text-muted-foreground">{p.dailyHours} hrs/day</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Resolution suggestion */}
+                {capacityConflict.resolutionSuggestion?.reductions?.length > 0 && (
+                  <div className="rounded-lg border border-warning/30 bg-warning/10 p-2.5 space-y-1">
+                    <p className="text-[10px] font-semibold text-warning">Suggested Resolution:</p>
+                    {capacityConflict.resolutionSuggestion.reductions.map((r: any) => (
+                      <p key={r.projectId} className="text-[11px] text-muted-foreground leading-relaxed">
+                        Reduce <strong className="text-foreground">{r.projectTitle}</strong> ({r.priority}) from {r.currentHours} → <strong className="text-warning">{r.suggestedHours} hrs/day</strong> (free {r.reduceBy} hrs)
+                      </p>
+                    ))}
+                  </div>
+                )}
+                {capacityConflict.resolutionSuggestion && !capacityConflict.resolutionSuggestion.resolvable && (
+                  <p className="text-[11px] text-muted-foreground italic">{capacityConflict.resolutionSuggestion.reason}</p>
+                )}
+
+                {/* Action buttons */}
+                <div className="flex gap-2 pt-1">
+                  <button
+                    onClick={() => { setCapacityConflict(null); setPendingAllocation(null); }}
+                    className="flex-1 rounded-xl border border-border bg-card py-2 text-[11px] font-semibold text-foreground hover:bg-muted cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  {capacityConflict.canForce && (
+                    <button
+                      onClick={handleForceAllocate}
+                      disabled={memberLoading}
+                      className="flex-1 flex items-center justify-center gap-1.5 rounded-xl border border-destructive/40 bg-destructive/15 py-2 text-[11px] font-bold text-destructive hover:bg-destructive/25 disabled:opacity-50 cursor-pointer"
+                    >
+                      {memberLoading ? <Loader2 className="size-3.5 animate-spin" /> : <ShieldAlert className="size-3.5" />}
+                      Override Anyway
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Currently Allocated Team Members */}
             <div className="space-y-3">

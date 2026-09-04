@@ -180,6 +180,7 @@ async function seedDatabase(currentUserId = "lead_sarah_connor") {
       title: "AI-Powered Customer Intelligence Hub",
       description: "Next-gen analytics platform delivering predictive customer churn insights and automated reporting.",
       status: "active",
+      priority: "P1", // Mission-Critical — revenue-impacting, client-facing deadlines
       member_ids: ["emp_riya_patel", "emp_karan_mehta", "emp_sneha_reddy"],
       team_allocations: [
         {
@@ -206,6 +207,7 @@ async function seedDatabase(currentUserId = "lead_sarah_connor") {
       title: "Enterprise Multi-Tenant Auth & Billing",
       description: "Stripe and Razorpay billing integrations, usage-based metering, and SSO authentication.",
       status: "active",
+      priority: "P2", // High-Value — important, flexible timeline
       member_ids: ["emp_karan_mehta", "emp_dev_nair", "emp_priya_singh"],
       team_allocations: [
         {
@@ -232,6 +234,7 @@ async function seedDatabase(currentUserId = "lead_sarah_connor") {
       title: "Mobile Field Companion App (iOS & Android)",
       description: "React Native mobile client with offline-first synchronization and real-time push alerts.",
       status: "in-review",
+      priority: "P3", // Strategic — long-term, no hard deadline
       member_ids: ["emp_riya_patel", "emp_sneha_reddy", "emp_priya_singh"],
       team_allocations: [
         {

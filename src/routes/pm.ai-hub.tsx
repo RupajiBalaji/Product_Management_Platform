@@ -4,6 +4,7 @@ import { Sparkles, Send, Loader2, Filter, Users, User, FolderKanban, CheckSquare
 import { AppShell } from "@/components/app-shell";
 import { generateDimensionSummary, askAICopilot, getAllProjects, getAllEmployees } from "@/lib/db";
 import type { Project, UserProfile } from "@/lib/types";
+import { isElevatedPriority, normalizePriority } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -169,7 +170,7 @@ export function AIHubPage() {
                   <option value="all">All Projects ({projects.length})</option>
                   {projects.map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.priority === "high" || p.priority === "critical" ? "🔥 " : ""}
+                      {isElevatedPriority(normalizePriority(p.priority)) ? "🔥 " : ""}
                       {p.title}
                     </option>
                   ))}

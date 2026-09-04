@@ -23,6 +23,7 @@ import { AppShell } from "@/components/app-shell";
 import { getUserProfile, getLogsByEmployee, getEmployeeProjects, getTasksByEmployee } from "@/lib/db";
 import { generateAISummary } from "@/lib/gemini";
 import type { UserProfile, Project, Task, DailyLog } from "@/lib/types";
+import { normalizePriority, PRIORITY_STYLES } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -135,7 +136,7 @@ Data:
 - Submission Consistency Score: ${consistencyScore}%
 - Active tasks: ${activeTasks.length}
 - Workload status: ${capacityStatus.label} (${taskCount} active tasks)
-- Allocated Projects: ${projects.map((p) => `${p.title} [Priority: ${p.priority || "medium"}]`).join(", ")}
+- Allocated Projects: ${projects.map((p) => `${p.title} [Priority: ${normalizePriority(p.priority)}]`).join(", ")}
 
 Recent work logs:
 ${logSummary || "No logs recorded"}
@@ -296,11 +297,15 @@ Provide a structured, executive-grade evaluation formatted in clear markdown sec
                       <div className="flex items-center justify-between gap-2">
                         <p className="font-semibold text-foreground text-sm">{p.title}</p>
                         <div className="flex items-center gap-1.5">
-                          {p.priority === "high" || p.priority === "critical" ? (
-                            <span className="rounded-full border border-amber-500/40 bg-amber-500/20 px-2 py-0.5 text-[9px] font-bold text-amber-300 font-mono">
-                              🔥 {p.priority.toUpperCase()}
-                            </span>
-                          ) : null}
+                          {(() => {
+                            const prio = normalizePriority(p.priority);
+                            const prioMeta = PRIORITY_STYLES[prio];
+                            return (
+                              <span className={cn("rounded-full border px-2 py-0.5 text-[9px] font-bold font-mono", prioMeta.badge)}>
+                                {prioMeta.icon} {prio}
+                              </span>
+                            );
+                          })()}
                           <span
                             className={cn(
                               "rounded-full border px-2 py-0.5 font-mono text-[9px] uppercase tracking-widest",

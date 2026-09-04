@@ -16,20 +16,14 @@ import {
 import { AppShell } from "@/components/app-shell";
 import { useAuth } from "@/context/AuthContext";
 import { getAllProjects, getAllEmployees } from "@/lib/db";
-import type { Project, UserProfile, ProjectPriority } from "@/lib/types";
+import type { Project, UserProfile } from "@/lib/types";
+import { PRIORITY_STYLES, normalizePriority, isElevatedPriority } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 
 export const Route = createFileRoute("/pm/dashboard")({
   component: PMDashboard,
 });
-
-const priorityStyles: Record<ProjectPriority, { label: string; tone: string; badge: string }> = {
-  critical: { label: "⚡ Critical", tone: "text-red-400", badge: "border-red-500/40 bg-red-500/15 text-red-300" },
-  high: { label: "🔥 High", tone: "text-amber-400", badge: "border-amber-500/40 bg-amber-500/15 text-amber-300" },
-  medium: { label: "Medium", tone: "text-blue-400", badge: "border-blue-500/30 bg-blue-500/10 text-blue-300" },
-  low: { label: "Low", tone: "text-muted-foreground", badge: "border-border bg-muted text-muted-foreground" },
-};
 
 function PMDashboard() {
   const { userProfile } = useAuth();
@@ -48,7 +42,7 @@ function PMDashboard() {
   }, []);
 
   const activeProjects = projects.filter((p) => p.status === "active");
-  const highPriorityProjects = projects.filter((p) => p.priority === "high" || p.priority === "critical");
+  const highPriorityProjects = projects.filter((p) => isElevatedPriority(normalizePriority(p.priority)));
 
   return (
     <AppShell
@@ -148,8 +142,9 @@ function PMDashboard() {
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {projects.map((p) => {
-              const prioMeta = priorityStyles[p.priority || "medium"];
-              const isHigh = p.priority === "high" || p.priority === "critical";
+              const priority = normalizePriority(p.priority);
+              const prioMeta = PRIORITY_STYLES[priority];
+              const isHigh = isElevatedPriority(priority);
 
               return (
                 <div

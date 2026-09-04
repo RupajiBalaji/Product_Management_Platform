@@ -5,6 +5,7 @@ const User = require("../models/User");
 const DynamicRole = require("../models/DynamicRole");
 const AuditLog = require("../models/AuditLog");
 const { verifyToken, requirePM, requireProductLead } = require("../middleware/auth");
+const { checkCapacityConflict, resolveConflictByPriority } = require("../lib/capacityRegistry");
 
 // Get all projects with member counts
 router.get("/", verifyToken, async (req, res) => {
@@ -81,7 +82,7 @@ router.get("/:id", verifyToken, async (req, res) => {
 // Create project with priority option
 router.post("/", verifyToken, requirePM, async (req, res) => {
   try {
-    const { title, description, member_ids, priority = "medium" } = req.body;
+    const { title, description, member_ids, priority = "P2" } = req.body;
     if (!title) return res.status(400).json({ error: "Title is required" });
 
     const project = new Project({
@@ -112,12 +113,14 @@ router.patch("/:id/status", verifyToken, requirePM, async (req, res) => {
   }
 });
 
-// Update project priority (High, Critical, Medium, Low)
+// Update project priority (P1/P2/P3 — Phase 3 governance model)
 router.patch("/:id/priority", verifyToken, requirePM, async (req, res) => {
   try {
     const { priority } = req.body;
-    if (!["low", "medium", "high", "critical"].includes(priority)) {
-      return res.status(400).json({ error: "Invalid priority value" });
+    if (!["P1", "P2", "P3"].includes(priority)) {
+      return res.status(400).json({
+        error: "Invalid priority value. Must be one of: P1 (Mission-Critical), P2 (High-Value), P3 (Strategic)",
+      });
     }
     const project = await Project.findByIdAndUpdate(
       req.params.id,
@@ -131,9 +134,10 @@ router.patch("/:id/priority", verifyToken, requirePM, async (req, res) => {
 });
 
 // Add/update member on project team with DynamicRole and daily hours
+// Phase 3: Capacity conflict check gate + force override for product_lead
 router.post("/:id/members", verifyToken, requireProductLead, async (req, res) => {
   try {
-    const { userId, roleId, dailyHours } = req.body;
+    const { userId, roleId, dailyHours, force } = req.body;
     if (!userId) return res.status(400).json({ error: "userId is required" });
 
     const project = await Project.findById(req.params.id);
@@ -149,7 +153,64 @@ router.post("/:id/members", verifyToken, requireProductLead, async (req, res) =>
 
     const hours = Number(dailyHours) || dynamicRole?.defaultDailyCapHours || 8;
 
+    // ── Phase 3: Capacity Conflict Gate ──────────────────────────────────────
+    const conflictResult = await checkCapacityConflict(userId, project._id.toString(), hours);
+
+    if (conflictResult.hasConflict && !force) {
+      // Build resolution suggestion for the response
+      const resolutionSuggestion = await resolveConflictByPriority(
+        userId,
+        project._id.toString(),
+        project.priority || "P2",
+        hours
+      );
+
+      return res.status(409).json({
+        error: "Capacity conflict",
+        message: `${user.full_name} is currently allocated ${conflictResult.currentTotal} hrs/day across ${conflictResult.conflictingProjects.length} project(s). ` +
+          `Adding ${hours} hrs/day on "${project.title}" (${project.priority || "P2"}) would exceed their ${conflictResult.dailyCap} hr/day capacity by ${conflictResult.overflowHours} hours.`,
+        currentTotal: conflictResult.currentTotal,
+        proposedDailyHours: hours,
+        proposedTotal: conflictResult.proposedTotal,
+        dailyCap: conflictResult.dailyCap,
+        overflowHours: conflictResult.overflowHours,
+        conflictingProjects: conflictResult.conflictingProjects,
+        resolutionSuggestion,
+        canForce: req.userType === "product_lead" || req.userType === "pm",
+      });
+    }
+
+    // If forced override by product_lead, log it
+    if (conflictResult.hasConflict && force) {
+      if (req.userType !== "product_lead" && req.userType !== "pm") {
+        return res.status(403).json({
+          error: "Only Product Leads can force-override capacity conflicts.",
+          code: "FORCE_OVERRIDE_DENIED",
+        });
+      }
+      await AuditLog.record({
+        actorId: req.uid,
+        action: "CAPACITY_OVERRIDDEN",
+        entityType: "Project",
+        entityId: project._id.toString(),
+        after: {
+          userId,
+          dailyHours: hours,
+          overflowHours: conflictResult.overflowHours,
+          dailyCap: conflictResult.dailyCap,
+          projectTitle: project.title,
+        },
+      });
+    }
+    // ── End Capacity Gate ─────────────────────────────────────────────────────
+
     if (!project.team_allocations) project.team_allocations = [];
+
+    // Capture before state for audit log
+    const existingAlloc = project.team_allocations.find((a) => String(a.user_id) === String(userId));
+    const before = existingAlloc
+      ? { userId, roleId: existingAlloc.role_id, dailyHours: existingAlloc.daily_hours }
+      : null;
 
     const existingIdx = project.team_allocations.findIndex((a) => String(a.user_id) === String(userId));
     if (existingIdx >= 0) {
@@ -172,9 +233,10 @@ router.post("/:id/members", verifyToken, requireProductLead, async (req, res) =>
 
     await AuditLog.record({
       actorId: req.uid,
-      action: "PROJECT_MEMBER_ALLOCATED",
+      action: "ALLOCATION_UPDATED",
       entityType: "Project",
       entityId: project._id.toString(),
+      before,
       after: { userId, roleId, dailyHours: hours },
     });
 

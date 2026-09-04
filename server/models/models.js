@@ -13,8 +13,8 @@ const projectSchema = new mongoose.Schema(
     },
     priority: {
       type: String,
-      enum: ["low", "medium", "high", "critical"],
-      default: "medium",
+      enum: ["P1", "P2", "P3"],
+      default: "P2",
       index: true,
     },
     member_ids: [{ type: String, ref: "User" }],
