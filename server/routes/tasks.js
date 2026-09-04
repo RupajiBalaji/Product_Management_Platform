@@ -1,8 +1,9 @@
 const express = require("express");
 const router = express.Router();
-const { Task, DailyLog } = require("../models/models");
+const { Task, DailyLog, Project } = require("../models/models");
 const AuditLog = require("../models/AuditLog");
 const { checkForCycle } = require("../lib/dagValidation");
+const { calculateTaskPriority, sortQueueByPriority } = require("../lib/taskPriority");
 const { verifyToken, requireProductLead } = require("../middleware/auth");
 
 // ─── GET /api/tasks/project/:projectId — Get tasks by project ────────────────
@@ -44,13 +45,100 @@ router.get("/project/:projectId/graph", verifyToken, async (req, res) => {
   }
 });
 
+// ─── Helper: Recalculate computed_priority for all tasks in a project ─────────
+async function recalculateProjectPriorities(projectId) {
+  try {
+    const project = await Project.findById(projectId);
+    if (!project) return [];
+
+    const allTasks = await Task.find({ project_id: projectId });
+    if (allTasks.length === 0) return [];
+
+    const rawTasks = allTasks.map((t) => t.toObject());
+    const updatedTasks = [];
+
+    for (const t of allTasks) {
+      const priorityInfo = calculateTaskPriority(t.toObject(), rawTasks, project.end_date);
+      if (t.computed_priority !== priorityInfo.priority) {
+        t.computed_priority = priorityInfo.priority;
+        await t.save();
+      }
+      updatedTasks.push({
+        _id: t._id,
+        id: t._id,
+        title: t.title,
+        computed_priority: priorityInfo.priority,
+        priority_reasoning: priorityInfo.reasoning,
+      });
+    }
+
+    return updatedTasks;
+  } catch (err) {
+    console.error("Error recalculating project priorities:", err);
+    return [];
+  }
+}
+
+// ─── POST /api/tasks/project/:projectId/recalculate-priorities ────────────────
+router.post("/project/:projectId/recalculate-priorities", verifyToken, async (req, res) => {
+  try {
+    const project = await Project.findById(req.params.projectId);
+    if (!project) {
+      return res.status(404).json({ success: false, error: "Project not found" });
+    }
+
+    const updatedTasks = await recalculateProjectPriorities(req.params.projectId);
+    res.json({
+      success: true,
+      message: `Recalculated priorities for ${updatedTasks.length} tasks`,
+      tasks: updatedTasks,
+    });
+  } catch (err) {
+    console.error("Error in recalculate-priorities route:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // ─── GET /api/tasks/my — Get tasks assigned to current user ───────────────────
 router.get("/my", verifyToken, async (req, res) => {
   try {
-    const tasks = await Task.find({ assignee_ids: req.uid })
+    const rawTasks = await Task.find({ assignee_ids: req.uid })
       .populate("depends_on", "_id title status")
-      .sort({ end_date: 1 });
-    res.json(tasks);
+      .lean();
+
+    // Attach subtask progress
+    const taskIds = rawTasks.map((t) => t._id);
+    const subtasks = await Task.find({ parent_task_id: { $in: taskIds } }).lean();
+
+    const subtaskMap = new Map();
+    for (const sub of subtasks) {
+      const pId = String(sub.parent_task_id);
+      if (!subtaskMap.has(pId)) subtaskMap.set(pId, []);
+      subtaskMap.get(pId).push(sub);
+    }
+
+    const tasksWithMeta = rawTasks.map((t) => {
+      const children = subtaskMap.get(String(t._id)) || [];
+      const subtask_count = children.length;
+      const subtask_completed = children.filter((s) => s.status === "completed").length;
+      const subtask_progress =
+        subtask_count > 0
+          ? Math.round((subtask_completed / subtask_count) * 100)
+          : t.status === "completed"
+          ? 100
+          : 0;
+
+      return {
+        ...t,
+        id: t._id,
+        subtask_count,
+        subtask_completed,
+        subtask_progress,
+      };
+    });
+
+    const sorted = sortQueueByPriority(tasksWithMeta);
+    res.json(sorted);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -163,11 +251,121 @@ router.patch("/:id/dependencies", verifyToken, async (req, res) => {
       after: { depends_on: task.depends_on },
     });
 
+    // Recalculate project priorities on DAG dependency changes
+    await recalculateProjectPriorities(task.project_id);
+
     const populated = await Task.findById(task._id).populate("depends_on", "_id title status");
     return res.json({ success: true, task: populated });
   } catch (err) {
     console.error("Error updating task dependencies:", err);
     return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ─── POST /api/tasks/:id/subtasks — Create Subtask ────────────────────────────
+router.post("/:id/subtasks", verifyToken, async (req, res) => {
+  try {
+    const parentTask = await Task.findById(req.params.id);
+    if (!parentTask) {
+      return res.status(404).json({ success: false, error: "Parent task not found" });
+    }
+
+    // Check authorization: caller must be assigned to parent task or elevated role
+    const isAssignee = (parentTask.assignee_ids || []).map(String).includes(String(req.uid));
+    const isElevated = ["product_lead", "lead_architect", "pm"].includes(req.userType);
+    if (!isAssignee && !isElevated) {
+      return res.status(403).json({
+        success: false,
+        error: "Access denied. Only assigned contributors or project leads can decompose this task.",
+      });
+    }
+
+    const { title, description, estimate_hours, start_date, end_date, acceptance_criteria_override } = req.body;
+    if (!title || !title.trim()) {
+      return res.status(400).json({ success: false, error: "Subtask title is required" });
+    }
+
+    const subtask = new Task({
+      project_id: parentTask.project_id,
+      parent_task_id: parentTask._id,
+      is_subtask: true,
+      title: title.trim(),
+      description: (description || "").trim(),
+      start_date: start_date || parentTask.start_date,
+      end_date: end_date || parentTask.end_date,
+      assignee_ids: req.body.assignee_ids && req.body.assignee_ids.length > 0 ? req.body.assignee_ids : parentTask.assignee_ids,
+      estimate_hours: Math.max(0, Number(estimate_hours) || 0),
+      acceptance_criteria_override: acceptance_criteria_override ? acceptance_criteria_override.trim() : null,
+      computed_priority: parentTask.computed_priority || "P2",
+      status: "active",
+    });
+
+    await subtask.save();
+
+    await AuditLog.record({
+      actorId: req.uid,
+      action: "SUBTASK_CREATED",
+      entityType: "Task",
+      entityId: subtask._id.toString(),
+      before: null,
+      after: {
+        parent_task_id: parentTask._id.toString(),
+        title: subtask.title,
+        estimate_hours: subtask.estimate_hours,
+      },
+    });
+
+    res.status(201).json({ success: true, subtask });
+  } catch (err) {
+    console.error("Error creating subtask:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ─── GET /api/tasks/:id/subtasks — Get Subtasks of a Parent Task ──────────────
+router.get("/:id/subtasks", verifyToken, async (req, res) => {
+  try {
+    const subtasks = await Task.find({ parent_task_id: req.params.id })
+      .populate("depends_on", "_id title status")
+      .sort({ created_at: 1 });
+    res.json({ success: true, subtasks });
+  } catch (err) {
+    console.error("Error fetching subtasks:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ─── GET /api/tasks/:id/progress — Get Task Progress from Subtasks ─────────────
+router.get("/:id/progress", verifyToken, async (req, res) => {
+  try {
+    const task = await Task.findById(req.params.id);
+    if (!task) {
+      return res.status(404).json({ success: false, error: "Task not found" });
+    }
+
+    const subtasks = await Task.find({ parent_task_id: task._id });
+    const totalSubtasks = subtasks.length;
+    const completedSubtasks = subtasks.filter((s) => s.status === "completed").length;
+
+    let progressPct = 0;
+    if (totalSubtasks === 0) {
+      progressPct = task.status === "completed" ? 100 : 0;
+    } else {
+      progressPct = Math.round((completedSubtasks / totalSubtasks) * 100);
+    }
+
+    res.json({
+      success: true,
+      taskId: task._id,
+      totalSubtasks,
+      completedSubtasks,
+      progressPct,
+      is_subtask: task.is_subtask || false,
+      parent_task_id: task.parent_task_id || null,
+    });
+  } catch (err) {
+    console.error("Error getting task progress:", err);
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
@@ -229,7 +427,7 @@ router.patch("/:id", verifyToken, async (req, res) => {
   }
 });
 
-// ─── DELETE /api/tasks/:id — Delete task with dependency guard ────────────────
+// ─── DELETE /api/tasks/:id — Delete task with dependency guard & cascade ───────
 router.delete("/:id", verifyToken, async (req, res) => {
   try {
     const task = await Task.findById(req.params.id);
@@ -251,6 +449,23 @@ router.delete("/:id", verifyToken, async (req, res) => {
       });
     }
 
+    // Cascade delete any child sub-tasks
+    const subtasks = await Task.find({ parent_task_id: task._id });
+    if (subtasks.length > 0) {
+      const subtaskIds = subtasks.map((s) => s._id);
+      await Task.deleteMany({ _id: { $in: subtaskIds } });
+      await DailyLog.deleteMany({ task_id: { $in: subtaskIds } });
+
+      await AuditLog.record({
+        actorId: req.uid,
+        action: "SUBTASKS_CASCADE_DELETED",
+        entityType: "Task",
+        entityId: task._id.toString(),
+        before: { count: subtasks.length, subtaskIds: subtaskIds.map(String) },
+        after: null,
+      });
+    }
+
     const beforeState = task.toObject();
     await Task.findByIdAndDelete(req.params.id);
 
@@ -267,7 +482,10 @@ router.delete("/:id", verifyToken, async (req, res) => {
       after: null,
     });
 
-    return res.json({ success: true, message: `Task "${task.title}" deleted successfully.` });
+    return res.json({
+      success: true,
+      message: `Task "${task.title}" and ${subtasks.length} subtask(s) deleted successfully.`,
+    });
   } catch (err) {
     console.error("Error deleting task:", err);
     return res.status(500).json({ success: false, error: err.message });

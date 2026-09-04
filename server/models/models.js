@@ -60,16 +60,22 @@ const taskSchema = new mongoose.Schema(
         answered_at: { type: Date, default: Date.now },
       },
     ],
+    // Phase 7: Sub-Task Decomposition & Algorithmic Priority
+    parent_task_id: { type: mongoose.Schema.Types.ObjectId, ref: "Task", default: null },
+    is_subtask: { type: Boolean, default: false },
+    acceptance_criteria_override: { type: String, default: null },
+    computed_priority: { type: String, enum: ["P0", "P1", "P2"], default: "P2", index: true },
   },
   { timestamps: { createdAt: "created_at", updatedAt: "updated_at" } }
 );
 
 taskSchema.index({ project_id: 1, order_index: 1 });
-
 taskSchema.index({ project_id: 1 });
 taskSchema.index({ assignee_ids: 1 });
 taskSchema.index({ start_date: 1, end_date: 1 });
 taskSchema.index({ depends_on: 1 });
+taskSchema.index({ parent_task_id: 1 });
+
 
 const dailyLogSchema = new mongoose.Schema(
   {

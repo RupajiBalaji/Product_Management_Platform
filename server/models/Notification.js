@@ -7,7 +7,7 @@ const notificationSchema = new mongoose.Schema(
     message: { type: String, required: true, trim: true },
     type: {
       type: String,
-      enum: ["slippage_escalation", "qa_rejection_loop", "capacity_conflict", "system"],
+      enum: ["slippage_escalation", "qa_rejection_loop", "capacity_conflict", "midday_p0_nudge", "system"],
       default: "system",
     },
     entity_id: { type: mongoose.Schema.Types.ObjectId },

@@ -88,7 +88,18 @@ Traditional enterprise project management tools (Jira, Asana, Monday.com) are fr
 - **Requirements Clarification & Slippage Freezing (`POST /api/actions/request-clarification`)**: Employees can ask questions on specifications. Google Gemini AI immediately scans project PRD/description text to provide instant answers; if specifications are missing, `slippage_frozen` is set to `true`, freezing the 3-day slippage timer and alerting the Product Lead.
 - **Clarification Review Queue & Answer System (`/pm/reviews` & `POST /api/actions/clarifications/:id/answer`)**: Product Leads and Lead Architects review open clarification requests, submit answers, automatically unfreeze the task's slippage clock, append the Q&A to the task history, and log to `AuditLog`.
 
-### 8. 📅 Interactive Calendar Matrix GUI
+### 8. 🌿 Sub-Task Decomposition & Task Execution Priority (Phase 7)
+- **Sub-Task Decomposition (`POST /api/tasks/:id/subtasks`)**: Decompose complex tasks into granular sub-tasks with optional acceptance criteria overrides, estimated hours, and inherited project scope.
+- **Rollup Progress Tracking (`GET /api/tasks/:id/progress`)**: Live calculation of completion percentages based on completed sub-tasks with 0%/100% fallback for standalone tasks.
+- **Critical Path (CPM) & Downstream Blocker Priority Engine (`server/lib/taskPriority.js`)**: Pure logic Critical Path Method (CPM) calculates earliest/latest start/finish and slack times. Assigns:
+  - **P0**: High-impact blockers (blocking $\ge 2$ downstream tasks) or zero-slack critical path milestones.
+  - **P1**: Single dependency blockers or urgent deadlines ($\le 3$ days remaining).
+  - **P2**: Normal independent execution with ample schedule buffer.
+- **Automated Priority Recalculation (`POST /api/tasks/project/:id/recalculate-priorities`)**: Triggered via API and automatically recalculated whenever DAG dependencies change.
+- **Mid-Day P0 Nudge Engine (`server/jobs/priorityNudge.js`)**: Scheduled daily at 12:00 PM to detect active P0 tasks with 0 logged activity for the day, dispatching urgent nudges to assigned contributors with built-in daily idempotency.
+- **Enhanced Daily Queue & Priority Badging**: Employee dashboard prioritizes work by P0 $\to$ P1 $\to$ P2 with reasoning tooltips, sub-task progress bars, and dedicated blocker filters.
+
+### 9. 📅 Interactive Calendar Matrix GUI
 
 - **Day-by-Day Contributor Matrix**: Interactive grid showing real-time contributor status (`Completed`, `In Progress`, `Blocked`, `No Log`).
 - **Instant Log Inspector Modal**: Click any log cell to inspect submitted deliverables, actual hours spent, blocker descriptions, and PR links.

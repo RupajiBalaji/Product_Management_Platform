@@ -2,8 +2,8 @@ import { cn } from "@/lib/utils";
 
 export { cn };
 
-// Re-export ProjectPriority from constants as the canonical type
-export type { ProjectPriority, EvaluationMode, SubmissionStatus, AppealStatus } from "@/lib/constants";
+// Re-export ProjectPriority & TaskPriority from constants as the canonical type
+export type { ProjectPriority, TaskPriority, EvaluationMode, SubmissionStatus, AppealStatus } from "@/lib/constants";
 export type UserType = "product_lead" | "lead_architect" | "employee" | "pm";
 export type ProjectStatus = "active" | "in-review" | "completed" | "frozen" | "archived";
 
@@ -67,6 +67,8 @@ export interface Task {
   id: string;
   _id?: string;
   project_id: string;
+  parent_task_id?: string | null;
+  is_subtask?: boolean;
   title: string;
   description: string;
   start_date: string;
@@ -78,6 +80,12 @@ export interface Task {
   logged_hours?: number;
   order_index?: number;
   slippage_frozen?: boolean;
+  acceptance_criteria_override?: string | null;
+  computed_priority?: import("@/lib/constants").TaskPriority;
+  priority_reasoning?: string;
+  subtask_count?: number;
+  subtask_completed?: number;
+  subtask_progress?: number;
   clarifications?: Array<{
     _id?: string;
     id?: string;
@@ -88,6 +96,15 @@ export interface Task {
     created_at?: string;
   }>;
   created_at: string;
+}
+
+export interface TaskProgressResponse {
+  taskId: string;
+  totalSubtasks: number;
+  completedSubtasks: number;
+  progressPct: number;
+  is_subtask: boolean;
+  parent_task_id: string | null;
 }
 
 export interface DailyLog {

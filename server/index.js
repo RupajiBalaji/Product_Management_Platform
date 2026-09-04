@@ -26,6 +26,7 @@ const appealsRoutes = require("./routes/appeals");
 const slippageRoutes = require("./routes/slippage");
 const actionsRoutes = require("./routes/actions");
 const { startSlippageCron, runSlippageCheck } = require("./jobs/slippageChecker");
+const { startPriorityNudgeCron, runMiddayPriorityNudge } = require("./jobs/priorityNudge");
 const seedDatabase = require("./seed");
 const { verifyToken, requirePM } = require("./middleware/auth");
 
@@ -135,6 +136,27 @@ app.post("/api/internal/run-slippage-check", async (req, res) => {
   }
 });
 
+// Internal runner endpoint for automated/manual midday P0 priority nudge
+app.post("/api/internal/run-priority-nudge", async (req, res) => {
+  try {
+    const secretHeader = req.headers["x-internal-secret"];
+    const expectedSecret = process.env.INTERNAL_SECRET || "autonomous-pm-internal-secret";
+
+    if (secretHeader !== expectedSecret) {
+      return res.status(403).json({
+        success: false,
+        error: "Unauthorized: Invalid or missing x-internal-secret header",
+      });
+    }
+
+    const { date } = req.body || {};
+    const results = await runMiddayPriorityNudge(date);
+    return res.json({ success: true, results });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // Seed API endpoint (Protected)
 app.post("/api/seed", verifyToken, async (req, res) => {
   try {
@@ -230,6 +252,8 @@ if (require.main === module) {
     console.log(`🚀 [Server] Production Express API running on http://localhost:${PORT}`);
     // Initialize automated daily slippage checker cron job
     startSlippageCron();
+    // Initialize automated midday P0 priority nudge cron job
+    startPriorityNudgeCron();
   });
 }
 

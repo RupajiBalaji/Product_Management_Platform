@@ -14,12 +14,22 @@ import {
   TrendingUp,
   Flame,
   Zap,
+  ListTree,
+  Info,
+  ShieldAlert,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { useAuth } from "@/context/AuthContext";
 import { getEmployeeProjects, getMyTasks, getDailyLog, getLogsByEmployee } from "@/lib/db";
 import type { Task, Project, DailyLog } from "@/lib/types";
-import { PRIORITY_STYLES, PRIORITY_WEIGHT, normalizePriority, isElevatedPriority } from "@/lib/constants";
+import {
+  PRIORITY_STYLES,
+  PRIORITY_WEIGHT,
+  TASK_PRIORITY_STYLES,
+  type TaskPriority,
+  normalizePriority,
+  isElevatedPriority,
+} from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/employee/dashboard")({
@@ -34,6 +44,7 @@ function EmployeeDashboard() {
   const [todayLogged, setTodayLogged] = useState<Record<string, boolean>>({});
   const [selectedProjectId, setSelectedProjectId] = useState<string>("all");
   const [onlyHighPriority, setOnlyHighPriority] = useState<boolean>(false);
+  const [onlyP0, setOnlyP0] = useState<boolean>(false);
   const [loading, setLoading] = useState(true);
 
   const today = format(new Date(), "yyyy-MM-dd");
@@ -81,22 +92,30 @@ function EmployeeDashboard() {
   // Find project map for quick lookups
   const projectMap = new Map(projects.map((p) => [String(p.id), p]));
 
-  // Filter tasks based on project and high priority filter
+  // Priority ranking for daily queue sorting: P0 > P1 > P2
+  const taskPrioRank: Record<string, number> = { P0: 3, P1: 2, P2: 1 };
+
+  // Filter tasks based on project, high priority project filter, and P0 filter
   const filteredTasks = tasks
     .filter((t) => {
       if (selectedProjectId !== "all" && String(t.project_id) !== String(selectedProjectId)) return false;
       if (onlyHighPriority) {
         const proj = projectMap.get(String(t.project_id));
-        return isElevatedPriority(normalizePriority(proj?.priority));
+        if (!isElevatedPriority(normalizePriority(proj?.priority))) return false;
       }
+      if (onlyP0 && (t.computed_priority || "P2") !== "P0") return false;
       return true;
     })
     .sort((a, b) => {
-      const projA = projectMap.get(String(a.project_id));
-      const projB = projectMap.get(String(b.project_id));
-      const isHighA = isElevatedPriority(normalizePriority(projA?.priority)) ? 1 : 0;
-      const isHighB = isElevatedPriority(normalizePriority(projB?.priority)) ? 1 : 0;
-      return isHighB - isHighA; // High priority tasks first
+      // 1. Task Computed Priority (P0 > P1 > P2)
+      const rankA = taskPrioRank[a.computed_priority || "P2"] || 1;
+      const rankB = taskPrioRank[b.computed_priority || "P2"] || 1;
+      if (rankB !== rankA) return rankB - rankA;
+
+      // 2. Tie-break: Soonest due date
+      const daysA = differenceInDays(parseISO(a.end_date), new Date());
+      const daysB = differenceInDays(parseISO(b.end_date), new Date());
+      return daysA - daysB;
     });
 
   const pendingTasks = tasks.filter((t) => !todayLogged[t.id]);
@@ -300,10 +319,28 @@ function EmployeeDashboard() {
 
           {/* Project & Priority Filter Tabs */}
           <div className="flex flex-wrap items-center gap-1.5 overflow-x-auto pb-1">
+            {/* P0 Blocker Filter */}
+            <button
+              onClick={() => {
+                setOnlyP0(!onlyP0);
+                setOnlyHighPriority(false);
+                setSelectedProjectId("all");
+              }}
+              className={cn(
+                "inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-bold transition-colors cursor-pointer",
+                onlyP0
+                  ? "bg-red-500 text-white shadow-xs"
+                  : "border border-red-500/40 bg-red-500/10 text-red-400 hover:bg-red-500/20"
+              )}
+            >
+              <ShieldAlert className="size-3" /> P0 Blockers Only
+            </button>
+
             {highPriorityProjects.length > 0 && (
               <button
                 onClick={() => {
                   setOnlyHighPriority(!onlyHighPriority);
+                  setOnlyP0(false);
                   setSelectedProjectId("all");
                 }}
                 className={cn(
@@ -321,10 +358,11 @@ function EmployeeDashboard() {
               onClick={() => {
                 setSelectedProjectId("all");
                 setOnlyHighPriority(false);
+                setOnlyP0(false);
               }}
               className={cn(
                 "rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors cursor-pointer",
-                selectedProjectId === "all" && !onlyHighPriority
+                selectedProjectId === "all" && !onlyHighPriority && !onlyP0
                   ? "bg-primary text-primary-foreground"
                   : "border border-border bg-card text-muted-foreground hover:text-foreground"
               )}
@@ -338,10 +376,11 @@ function EmployeeDashboard() {
                 onClick={() => {
                   setSelectedProjectId(p.id);
                   setOnlyHighPriority(false);
+                  setOnlyP0(false);
                 }}
                 className={cn(
                   "rounded-lg px-3 py-1.5 text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer",
-                  selectedProjectId === p.id && !onlyHighPriority
+                  selectedProjectId === p.id && !onlyHighPriority && !onlyP0
                     ? "bg-primary text-primary-foreground"
                     : "border border-border bg-card text-muted-foreground hover:text-foreground"
                 )}
@@ -372,35 +411,65 @@ function EmployeeDashboard() {
               const logged = todayLogged[task.id];
               const proj = projectMap.get(String(task.project_id));
               const isHighPrio = isElevatedPriority(normalizePriority(proj?.priority));
+              const taskPrio = (task.computed_priority || "P2") as TaskPriority;
+              const taskPrioMeta = TASK_PRIORITY_STYLES[taskPrio] || TASK_PRIORITY_STYLES.P2;
+              const isP0 = taskPrio === "P0";
 
               return (
                 <div
                   key={task.id}
                   className={cn(
                     "panel p-5 flex flex-col justify-between border-l-4 transition-all relative",
-                    logged ? "border-l-success" : "border-l-warning",
-                    isHighPrio && !logged && "border-amber-500/50 bg-gradient-to-r from-amber-500/5 to-transparent"
+                    isP0
+                      ? "border-l-red-500 bg-gradient-to-r from-red-500/10 via-card to-card"
+                      : taskPrio === "P1"
+                      ? "border-l-amber-500 bg-gradient-to-r from-amber-500/5 via-card to-card"
+                      : logged
+                      ? "border-l-success"
+                      : "border-l-muted-foreground/40",
+                    isHighPrio && !logged && !isP0 && "border-amber-500/50 bg-gradient-to-r from-amber-500/5 to-transparent"
                   )}
                 >
                   <div>
                     <div className="flex items-start justify-between gap-2 mb-1.5">
                       <div className="min-w-0">
-                        {proj && (
-                          <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                        <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                          {proj && (
                             <span className="text-eyebrow text-[9px] text-primary truncate">
                               {proj.title}
                             </span>
-                            {isHighPrio && (
-                              <span className="inline-flex items-center gap-0.5 rounded bg-amber-500/20 px-1.5 py-0.2 text-[8px] font-bold text-amber-300">
-                                <Flame className="size-2.5" /> High Priority Focus
-                              </span>
+                          )}
+
+                          {/* Task Execution Priority Badge (Phase 7) */}
+                          <span
+                            className={cn(
+                              "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-mono",
+                              taskPrioMeta.badge
                             )}
-                            <span className="inline-flex items-center gap-0.5 rounded border border-border/70 bg-secondary/50 px-1.5 py-0.2 text-[8px] font-mono text-muted-foreground">
-                              ⚡ AI-Graded
+                          >
+                            <span>{taskPrioMeta.icon}</span>
+                            <span>{taskPrioMeta.shortLabel}</span>
+                          </span>
+
+                          {isHighPrio && (
+                            <span className="inline-flex items-center gap-0.5 rounded bg-amber-500/20 px-1.5 py-0.2 text-[8px] font-bold text-amber-300">
+                              <Flame className="size-2.5" /> High Project
                             </span>
-                          </div>
-                        )}
+                          )}
+                        </div>
+
                         <h3 className="font-display font-bold text-foreground text-sm truncate">{task.title}</h3>
+
+                        {/* Priority Reasoning Tooltip/Callout */}
+                        {task.priority_reasoning && (
+                          <p
+                            className="text-[10px] text-muted-foreground flex items-center gap-1 mt-0.5 italic truncate"
+                            title={task.priority_reasoning}
+                          >
+                            <Info className="size-3 shrink-0 text-muted-foreground/70" />
+                            <span className="truncate">{task.priority_reasoning}</span>
+                          </p>
+                        )}
                       </div>
 
                       {logged ? (
@@ -413,9 +482,31 @@ function EmployeeDashboard() {
                         </span>
                       )}
                     </div>
+
                     <p className="text-xs text-muted-foreground line-clamp-2 mt-1 leading-relaxed">
                       {task.description || "No description provided."}
                     </p>
+
+                    {/* Sub-Task Decomposition Progress Bar (Phase 7) */}
+                    {(task.subtask_count || 0) > 0 && (
+                      <div className="mt-3 rounded-lg bg-secondary/40 border border-border/50 p-2 text-xs">
+                        <div className="flex items-center justify-between text-[10px] font-mono text-muted-foreground mb-1">
+                          <span className="flex items-center gap-1">
+                            <ListTree className="size-3 text-primary" /> Sub-tasks: {task.subtask_completed || 0}/{task.subtask_count}
+                          </span>
+                          <span className="font-bold text-foreground">{task.subtask_progress || 0}%</span>
+                        </div>
+                        <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
+                          <div
+                            className={cn(
+                              "h-full transition-all duration-300 rounded-full",
+                              (task.subtask_progress || 0) === 100 ? "bg-success" : "bg-primary"
+                            )}
+                            style={{ width: `${Math.min(100, Math.max(0, task.subtask_progress || 0))}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <div className="mt-4 pt-3 border-t border-border/50 flex items-center justify-between gap-2">
@@ -438,12 +529,14 @@ function EmployeeDashboard() {
                         "inline-flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-bold transition-all cursor-pointer",
                         logged
                           ? "border border-success/30 bg-success/10 text-success hover:bg-success/20"
+                          : isP0
+                          ? "bg-red-500 text-white hover:bg-red-400 font-extrabold shadow-sm"
                           : isHighPrio
                           ? "bg-amber-500 text-black hover:bg-amber-400 font-extrabold shadow-sm"
                           : "bg-primary text-primary-foreground shadow-glow hover:bg-primary/90"
                       )}
                     >
-                      {logged ? "✓ Edit Log" : isHighPrio ? "🔥 Log Priority Task" : "📝 Log Work"}
+                      {logged ? "✓ Edit Log" : isP0 ? "🚨 Log P0 Task" : isHighPrio ? "🔥 Log Priority Task" : "📝 Log Work"}
                     </Link>
                   </div>
                 </div>

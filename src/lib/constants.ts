@@ -265,4 +265,50 @@ export const ACTION_STATUS_STYLES: Record<
   },
 };
 
+// ─── Phase 7: Task Execution Priority (P0 / P1 / P2) ─────────────────────────
+// P0 = Blocker / Critical Path (blocks 2+ downstream tasks, or on critical path with 0 slack)
+// P1 = Urgent Milestone / Single Blocker (due ≤ 3 days, or blocks 1 downstream task)
+// P2 = Normal Execution (independent work, ample slack, distant deadline)
+
+export type TaskPriority = "P0" | "P1" | "P2";
+
+export const TASK_PRIORITY_ORDER: TaskPriority[] = ["P0", "P1", "P2"];
+
+export const TASK_PRIORITY_STYLES: Record<
+  TaskPriority,
+  {
+    label: string;
+    shortLabel: string;
+    badge: string;
+    icon: string;
+    border: string;
+    dot: string;
+  }
+> = {
+  P0: {
+    label: "P0 · Blocker / Critical Path",
+    shortLabel: "P0 Blocker",
+    badge: "border-red-500/50 bg-red-500/20 text-red-300 font-extrabold shadow-xs",
+    icon: "🚨",
+    border: "border-l-red-500",
+    dot: "bg-red-500",
+  },
+  P1: {
+    label: "P1 · Urgent Milestone",
+    shortLabel: "P1 Urgent",
+    badge: "border-amber-500/40 bg-amber-500/20 text-amber-300 font-bold",
+    icon: "⚠️",
+    border: "border-l-amber-500",
+    dot: "bg-amber-400",
+  },
+  P2: {
+    label: "P2 · Normal Priority",
+    shortLabel: "P2 Normal",
+    badge: "border-slate-500/30 bg-slate-500/15 text-slate-300 font-medium",
+    icon: "📌",
+    border: "border-l-slate-600",
+    dot: "bg-slate-400",
+  },
+};
+
 

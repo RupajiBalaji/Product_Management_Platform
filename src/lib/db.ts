@@ -810,5 +810,47 @@ export async function getTaskActionHistory(taskId: string): Promise<import("@/li
   }
 }
 
+// ─── Phase 7: Sub-Task Decomposition & Task Priority ─────────────────────────
+
+export async function createSubtask(
+  parentTaskId: string,
+  data: {
+    title: string;
+    description?: string;
+    estimate_hours?: number;
+    acceptance_criteria_override?: string;
+    start_date?: string;
+    end_date?: string;
+    assignee_ids?: string[];
+  }
+): Promise<import("@/lib/types").Task> {
+  const res = await apiFetch(`/api/tasks/${parentTaskId}/subtasks`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+  return normalizeDoc(res.subtask);
+}
+
+export async function getSubtasks(parentTaskId: string): Promise<import("@/lib/types").Task[]> {
+  try {
+    const res = await apiFetch(`/api/tasks/${parentTaskId}/subtasks`);
+    return normalizeDocs(res.subtasks || []);
+  } catch {
+    return [];
+  }
+}
+
+export async function getTaskProgress(taskId: string): Promise<import("@/lib/types").TaskProgressResponse> {
+  return await apiFetch(`/api/tasks/${taskId}/progress`);
+}
+
+export async function recalculateProjectPriorities(
+  projectId: string
+): Promise<{ success: boolean; message: string; tasks: any[] }> {
+  return await apiFetch(`/api/tasks/project/${projectId}/recalculate-priorities`, {
+    method: "POST",
+  });
+}
+
 
 

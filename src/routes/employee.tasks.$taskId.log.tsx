@@ -26,6 +26,11 @@ import {
   Check,
   Info,
   Lock,
+  ListTree,
+  Plus,
+  CheckCircle,
+  Circle,
+  ArrowUpRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/app-shell";
@@ -42,15 +47,21 @@ import {
   swapTask,
   requestClarification,
   getTaskActionHistory,
+  createSubtask,
+  getSubtasks,
+  getTaskProgress,
+  updateTask,
 } from "@/lib/db";
-import type { Task, DailyLog, Project, Submission, Appeal, ActionRequest } from "@/lib/types";
+import type { Task, DailyLog, Project, Submission, Appeal, ActionRequest, TaskProgressResponse } from "@/lib/types";
 import {
   EVALUATION_MODE_STYLES,
   SUBMISSION_STATUS_STYLES,
   APPEAL_STATUS_STYLES,
   ACTION_STATUS_STYLES,
   ACTION_TYPE_LABELS,
+  TASK_PRIORITY_STYLES,
   type EvaluationMode,
+  type TaskPriority,
 } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
@@ -63,12 +74,22 @@ function TaskDeliverableAndLogPage() {
   const { userProfile } = useAuth();
   const navigate = useNavigate();
 
-  // Tab State: "qa" | "log" | "actions"
-  const [activeTab, setActiveTab] = useState<"qa" | "log" | "actions">("qa");
+  // Tab State: "qa" | "log" | "subtasks" | "actions"
+  const [activeTab, setActiveTab] = useState<"qa" | "log" | "subtasks" | "actions">("qa");
 
   const [task, setTask] = useState<Task | null>(null);
   const [project, setProject] = useState<Project | null>(null);
   const [evaluationMode, setEvaluationMode] = useState<EvaluationMode>("objective");
+
+  // Sub-Task State (Phase 7)
+  const [subtasks, setSubtasks] = useState<Task[]>([]);
+  const [subtaskProgress, setSubtaskProgress] = useState<TaskProgressResponse | null>(null);
+  const [subtaskTitle, setSubtaskTitle] = useState("");
+  const [subtaskDesc, setSubtaskDesc] = useState("");
+  const [subtaskHours, setSubtaskHours] = useState<number>(4);
+  const [subtaskCriteriaOverride, setSubtaskCriteriaOverride] = useState("");
+  const [submittingSubtask, setSubmittingSubtask] = useState(false);
+  const [showSubtaskForm, setShowSubtaskForm] = useState(false);
 
   // Daily Log State
   const [existingLog, setExistingLog] = useState<DailyLog | null>(null);
@@ -113,17 +134,19 @@ function TaskDeliverableAndLogPage() {
   const loadAll = async () => {
     if (!userProfile) return;
     try {
-      const [t, log, subs, history] = await Promise.all([
+      const [t, log, subs, history, childTasks, prog] = await Promise.all([
         getTaskById(taskId),
         getDailyLog(taskId, userProfile.id, today),
         getSubmissionsByTask(taskId),
         getTaskActionHistory(taskId),
+        getSubtasks(taskId),
+        getTaskProgress(taskId),
       ]);
 
       setTask(t);
       setExistingLog(log);
-      setSubmissions(subs);
-      setActionHistory(history);
+      setSubtasks(childTasks);
+      setSubtaskProgress(prog);
       if (t?.order_index !== undefined) {
         setNewPosition(t.order_index);
       }
@@ -163,6 +186,48 @@ function TaskDeliverableAndLogPage() {
   useEffect(() => {
     loadAll();
   }, [taskId, userProfile]);
+
+  // Handle Sub-Task Creation (Phase 7)
+  const handleCreateSubtask = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!subtaskTitle.trim()) {
+      toast.error("Please enter a title for the sub-task.");
+      return;
+    }
+    setSubmittingSubtask(true);
+    try {
+      await createSubtask(taskId, {
+        title: subtaskTitle.trim(),
+        description: subtaskDesc.trim() || undefined,
+        estimate_hours: Number(subtaskHours) || 0,
+        acceptance_criteria_override: subtaskCriteriaOverride.trim() || undefined,
+        start_date: task?.start_date,
+        end_date: task?.end_date,
+      });
+      toast.success("Sub-task decomposed successfully!");
+      setSubtaskTitle("");
+      setSubtaskDesc("");
+      setSubtaskCriteriaOverride("");
+      setShowSubtaskForm(false);
+      loadAll();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to create subtask");
+    } finally {
+      setSubmittingSubtask(false);
+    }
+  };
+
+  // Handle Sub-Task Status Toggle (Phase 7)
+  const handleToggleSubtaskStatus = async (sub: Task) => {
+    const nextStatus = sub.status === "completed" ? "active" : "completed";
+    try {
+      await updateTask(sub.id || sub._id!, { status: nextStatus });
+      toast.success(`Sub-task marked as ${nextStatus === "completed" ? "completed ✓" : "active"}!`);
+      loadAll();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update sub-task status");
+    }
+  };
 
   // Handle Daily Log Submit
   const handleLogSubmit = async (e: React.FormEvent) => {
@@ -390,6 +455,31 @@ function TaskDeliverableAndLogPage() {
                 <span className="text-eyebrow text-[10px] text-primary">
                   {project?.title}
                 </span>
+
+                {/* Task Computed Priority Badge (Phase 7) */}
+                {task?.computed_priority && (
+                  <span
+                    className={cn(
+                      "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold font-mono",
+                      TASK_PRIORITY_STYLES[task.computed_priority]?.badge || TASK_PRIORITY_STYLES.P2.badge
+                    )}
+                  >
+                    <span>{TASK_PRIORITY_STYLES[task.computed_priority]?.icon}</span>
+                    <span>{TASK_PRIORITY_STYLES[task.computed_priority]?.shortLabel}</span>
+                  </span>
+                )}
+
+                {/* Sub-Task Breadcrumb / Parent Indicator */}
+                {task?.is_subtask && task.parent_task_id && (
+                  <Link
+                    to="/employee/tasks/$taskId/log"
+                    params={{ taskId: String(task.parent_task_id) }}
+                    className="inline-flex items-center gap-1 rounded-full border border-primary/40 bg-primary/10 px-2.5 py-0.5 text-[10px] font-bold text-primary hover:bg-primary/20 transition-colors"
+                  >
+                    <span>Sub-task of Parent ↗</span>
+                  </Link>
+                )}
+
                 <span className={cn("inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold font-mono", evalStyle.badge)}>
                   <span>{evalStyle.icon}</span>
                   <span>{evalStyle.shortLabel}</span>
@@ -452,6 +542,25 @@ function TaskDeliverableAndLogPage() {
               <span>Daily Work Log</span>
               {existingLog && (
                 <span className="ml-1 text-[9px] text-success">✓</span>
+              )}
+            </button>
+
+            {/* Sub-Tasks Tab (Phase 7) */}
+            <button
+              onClick={() => setActiveTab("subtasks")}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-bold transition-all cursor-pointer",
+                activeTab === "subtasks"
+                  ? "bg-primary text-primary-foreground shadow-glow"
+                  : "border border-border bg-elevated text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <ListTree className="size-3.5" />
+              <span>Sub-Tasks</span>
+              {subtasks.length > 0 && (
+                <span className="ml-1 rounded-full bg-background/30 px-1.5 py-0.2 text-[9px] font-mono">
+                  {subtaskProgress?.completedSubtasks || 0}/{subtasks.length}
+                </span>
               )}
             </button>
 
@@ -826,7 +935,244 @@ function TaskDeliverableAndLogPage() {
         )}
 
         {/* ─────────────────────────────────────────────────────────────────── */}
-        {/* TAB 3: EMPLOYEE ACTION MODE (REORDER / SWAP / CLARIFY / POSTPONE)   */}
+        {/* TAB 3: SUB-TASK DECOMPOSITION (PHASE 7)                             */}
+        {/* ─────────────────────────────────────────────────────────────────── */}
+        {activeTab === "subtasks" && (
+          <div className="space-y-6">
+            {/* Progress Header Banner */}
+            <div className="panel p-5 bg-card border-border">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+                <div>
+                  <h3 className="font-display font-bold text-sm text-foreground flex items-center gap-2">
+                    <ListTree className="size-4 text-primary" />
+                    <span>Sub-Task Decomposition & Progress</span>
+                  </h3>
+                  <p className="text-eyebrow text-[10px] text-muted-foreground mt-0.5">
+                    Break large deliverables into granular, verifiable sub-tasks with independent acceptance criteria
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-mono font-bold text-foreground">
+                    {subtaskProgress?.completedSubtasks || 0} / {subtaskProgress?.totalSubtasks || subtasks.length} Completed
+                  </span>
+                  <span className="rounded-full bg-primary/10 border border-primary/30 px-2.5 py-0.5 text-xs font-bold text-primary font-mono">
+                    {subtaskProgress?.progressPct ?? (subtasks.length > 0 ? 0 : task?.status === "completed" ? 100 : 0)}%
+                  </span>
+                </div>
+              </div>
+
+              {/* Progress Bar */}
+              <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-primary rounded-full transition-all duration-300"
+                  style={{
+                    width: `${Math.min(
+                      100,
+                      Math.max(
+                        0,
+                        subtaskProgress?.progressPct ?? (subtasks.length > 0 ? 0 : task?.status === "completed" ? 100 : 0)
+                      )
+                    )}%`,
+                  }}
+                />
+              </div>
+
+              <div className="flex items-center justify-between mt-4 pt-3 border-t border-border/50 text-xs">
+                <span className="text-muted-foreground text-[11px]">
+                  Parent task progress updates automatically as sub-tasks are marked complete.
+                </span>
+                <button
+                  onClick={() => setShowSubtaskForm(!showSubtaskForm)}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3.5 py-1.5 text-xs font-bold text-primary-foreground hover:bg-primary/90 transition-all cursor-pointer shadow-xs"
+                >
+                  <Plus className="size-3.5" />
+                  <span>{showSubtaskForm ? "Close Form" : "Break into Sub-Task"}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Subtask Creation Form Modal/Card */}
+            {showSubtaskForm && (
+              <div className="panel p-6 bg-card border-primary/40 shadow-glow">
+                <div className="flex items-center justify-between pb-3 mb-4 border-b border-border">
+                  <h4 className="font-display font-bold text-sm text-foreground flex items-center gap-1.5">
+                    <Plus className="size-4 text-primary" /> Create Sub-Task
+                  </h4>
+                  <button
+                    onClick={() => setShowSubtaskForm(false)}
+                    className="text-muted-foreground hover:text-foreground text-xs"
+                  >
+                    <X className="size-4" />
+                  </button>
+                </div>
+
+                <form onSubmit={handleCreateSubtask} className="space-y-4">
+                  <div>
+                    <label className="text-eyebrow mb-1.5 block">Sub-Task Title *</label>
+                    <input
+                      type="text"
+                      value={subtaskTitle}
+                      onChange={(e) => setSubtaskTitle(e.target.value)}
+                      placeholder="e.g. Implement repository query functions"
+                      required
+                      className="w-full rounded-xl border border-input bg-elevated px-3.5 py-2 text-xs text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-eyebrow mb-1.5 block">Description</label>
+                    <textarea
+                      rows={2}
+                      value={subtaskDesc}
+                      onChange={(e) => setSubtaskDesc(e.target.value)}
+                      placeholder="Optional implementation details, acceptance hints..."
+                      className="w-full rounded-xl border border-input bg-elevated p-3 text-xs text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary resize-none"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-eyebrow mb-1.5 block">Estimated Hours</label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={40}
+                        value={subtaskHours}
+                        onChange={(e) => setSubtaskHours(Number(e.target.value) || 0)}
+                        className="w-full rounded-xl border border-input bg-elevated px-3.5 py-2 text-xs text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary font-mono"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-eyebrow mb-1.5 block">Acceptance Criteria Override (Optional)</label>
+                      <input
+                        type="text"
+                        value={subtaskCriteriaOverride}
+                        onChange={(e) => setSubtaskCriteriaOverride(e.target.value)}
+                        placeholder="Inherits parent criteria if left empty"
+                        className="w-full rounded-xl border border-input bg-elevated px-3.5 py-2 text-xs text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowSubtaskForm(false)}
+                      className="rounded-xl border border-border px-4 py-2 text-xs font-semibold text-muted-foreground hover:bg-elevated transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={submittingSubtask}
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-xs font-bold text-primary-foreground shadow-glow hover:bg-primary/90 disabled:opacity-50 transition-all cursor-pointer"
+                    >
+                      {submittingSubtask ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : (
+                        <Plus className="size-3.5" />
+                      )}
+                      <span>{submittingSubtask ? "Creating…" : "Save Sub-Task"}</span>
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
+
+            {/* Subtasks List */}
+            <div className="space-y-3">
+              <h4 className="font-display font-bold text-xs uppercase tracking-wider text-muted-foreground">
+                Sub-Tasks Breakdown ({subtasks.length})
+              </h4>
+
+              {subtasks.length === 0 ? (
+                <div className="panel p-8 text-center text-muted-foreground text-xs">
+                  <ListTree className="size-8 mx-auto text-muted-foreground/30 mb-2" />
+                  <p className="font-semibold text-foreground">No sub-tasks created yet</p>
+                  <p className="text-[11px] mt-0.5">
+                    Click "Break into Sub-Task" above to decompose this deliverable into manageable increments.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  {subtasks.map((sub, idx) => {
+                    const isDone = sub.status === "completed";
+                    return (
+                      <div
+                        key={sub.id || sub._id}
+                        className={cn(
+                          "panel p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-l-4 transition-all bg-card",
+                          isDone ? "border-l-success opacity-85" : "border-l-primary"
+                        )}
+                      >
+                        <div className="flex items-start gap-3 min-w-0">
+                          {/* Status Toggle Button */}
+                          <button
+                            type="button"
+                            onClick={() => handleToggleSubtaskStatus(sub)}
+                            className="mt-0.5 shrink-0 text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
+                            title={isDone ? "Mark as active" : "Mark as completed"}
+                          >
+                            {isDone ? (
+                              <CheckCircle className="size-5 text-success" />
+                            ) : (
+                              <Circle className="size-5 text-muted-foreground/60 hover:text-primary" />
+                            )}
+                          </button>
+
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 mb-1 flex-wrap">
+                              <span className="font-mono text-[10px] text-muted-foreground">
+                                #{idx + 1}
+                              </span>
+                              <h5
+                                className={cn(
+                                  "font-bold text-xs text-foreground truncate",
+                                  isDone && "line-through text-muted-foreground"
+                                )}
+                              >
+                                {sub.title}
+                              </h5>
+                              <span className="rounded-full border border-border bg-elevated px-2 py-0.2 font-mono text-[9px] text-muted-foreground">
+                                {sub.estimate_hours || 0}h
+                              </span>
+                              {sub.acceptance_criteria_override && (
+                                <span className="rounded-full border border-primary/40 bg-primary/10 px-2 py-0.2 font-mono text-[8px] font-bold text-primary truncate max-w-[200px]">
+                                  Criteria: {sub.acceptance_criteria_override}
+                                </span>
+                              )}
+                            </div>
+                            {sub.description && (
+                              <p className="text-[11px] text-muted-foreground line-clamp-1">
+                                {sub.description}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                          <Link
+                            to="/employee/tasks/$taskId/log"
+                            params={{ taskId: sub.id || sub._id! }}
+                            className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline font-semibold"
+                          >
+                            <span>Open Task</span>
+                            <ArrowUpRight className="size-3" />
+                          </Link>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ─────────────────────────────────────────────────────────────────── */}
+        {/* TAB 4: EMPLOYEE ACTION MODE (REORDER / SWAP / CLARIFY / POSTPONE)   */}
         {/* ─────────────────────────────────────────────────────────────────── */}
         {activeTab === "actions" && (
           <div className="space-y-6">
