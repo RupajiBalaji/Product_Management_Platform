@@ -70,6 +70,9 @@ export interface Task {
   end_date: string;
   assignee_ids: string[];
   status: "active" | "completed";
+  depends_on?: string[] | Array<{ _id: string; title: string; status?: string }>;
+  estimate_hours?: number;
+  logged_hours?: number;
   created_at: string;
 }
 

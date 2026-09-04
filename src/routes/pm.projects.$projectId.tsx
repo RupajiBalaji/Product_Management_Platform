@@ -16,6 +16,12 @@ import {
   Flame,
   ShieldCheck,
   ChevronDown,
+  GitFork,
+  Network,
+  Edit2,
+  Trash2,
+  CheckCircle2,
+  AlertCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format, parseISO, differenceInDays } from "date-fns";
@@ -26,6 +32,10 @@ import {
   getAllEmployees,
   getRoles,
   createTask,
+  updateTask,
+  updateTaskDependencies,
+  deleteTask,
+  getProjectTaskGraph,
   addProjectMember,
   removeProjectMember,
   updateProjectPriority,
@@ -54,6 +64,8 @@ function ProjectDetailPage() {
   const [dailyHoursAllocated, setDailyHoursAllocated] = useState<number>(8);
   const [loading, setLoading] = useState(true);
   const [showTaskModal, setShowTaskModal] = useState(false);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [showGraphModal, setShowGraphModal] = useState(false);
   const [showMemberModal, setShowMemberModal] = useState(false);
   const [selectedNewMember, setSelectedNewMember] = useState("");
   const [memberLoading, setMemberLoading] = useState(false);
@@ -132,6 +144,17 @@ function ProjectDetailPage() {
       toast.error(err.message || "Failed to remove member");
     } finally {
       setMemberLoading(false);
+    }
+  };
+
+  const handleDeleteTask = async (taskId: string, taskTitle: string) => {
+    if (!confirm(`Are you sure you want to delete task "${taskTitle}"?`)) return;
+    try {
+      await deleteTask(taskId);
+      toast.success(`Task "${taskTitle}" deleted.`);
+      load();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to delete task");
     }
   };
 
@@ -323,17 +346,28 @@ function ProjectDetailPage() {
           </div>
 
           {/* Tasks Section */}
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
             <div>
               <h2 className="font-display text-lg font-bold text-foreground">Project Tasks & Schedules ({tasks.length})</h2>
-              <p className="text-eyebrow text-[10px]">Track task deadlines and assigned team members</p>
+              <p className="text-eyebrow text-[10px]">Track task deadlines, prerequisite dependencies, and estimates</p>
             </div>
-            <button
-              onClick={() => setShowTaskModal(true)}
-              className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline cursor-pointer"
-            >
-              <Plus className="size-3.5" /> Add Task
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowGraphModal(true)}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted hover:border-primary/40 transition-colors cursor-pointer shadow-xs"
+              >
+                <Network className="size-3.5 text-primary" /> Dependency Graph (DAG)
+              </button>
+              <button
+                onClick={() => {
+                  setEditingTask(null);
+                  setShowTaskModal(true);
+                }}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors cursor-pointer shadow-glow"
+              >
+                <Plus className="size-3.5" /> Add Task
+              </button>
+            </div>
           </div>
 
           {tasks.length === 0 ? (
@@ -344,7 +378,10 @@ function ProjectDetailPage() {
                 Add tasks and assign your allocated team members to start tracking daily logs in the calendar matrix.
               </p>
               <button
-                onClick={() => setShowTaskModal(true)}
+                onClick={() => {
+                  setEditingTask(null);
+                  setShowTaskModal(true);
+                }}
                 className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-xs font-bold text-primary-foreground hover:bg-primary/90 shadow-glow cursor-pointer"
               >
                 <Plus className="size-4" /> Create First Task
@@ -355,38 +392,107 @@ function ProjectDetailPage() {
               {tasks.map((task) => {
                 const assignees = allEmployees.filter((e) => (task.assignee_ids || []).includes(e.id));
                 const now = new Date();
-                const isActive = parseISO(task.start_date) <= now && parseISO(task.end_date) >= now;
-                const isOverdue = parseISO(task.end_date) < now;
+                const isCompleted = task.status === "completed";
+                const isActive = !isCompleted && parseISO(task.start_date) <= now && parseISO(task.end_date) >= now;
+                const isOverdue = !isCompleted && parseISO(task.end_date) < now;
                 const daysLeft = differenceInDays(parseISO(task.end_date), now);
+
+                // Prerequisite analysis
+                const deps = (task.depends_on || []).map((d: any) => {
+                  if (typeof d === "object" && d !== null) {
+                    return { id: String(d._id || d.id), title: d.title, status: d.status };
+                  }
+                  const match = tasks.find((t) => t.id === d);
+                  return { id: String(d), title: match?.title || "Prerequisite Task", status: match?.status || "active" };
+                });
+                const uncompletedDeps = deps.filter((d) => d.status !== "completed");
+                const hasBlockers = uncompletedDeps.length > 0;
 
                 return (
                   <div
                     key={task.id}
                     className={cn(
-                      "panel p-4 border-l-4 transition-all flex flex-col md:flex-row md:items-center justify-between gap-4",
-                      isActive ? "border-l-success" : isOverdue ? "border-l-destructive" : "border-l-muted"
+                      "panel p-4 border-l-4 transition-all flex flex-col md:flex-row md:items-center justify-between gap-4 group hover:border-primary/30",
+                      isCompleted
+                        ? "border-l-success/60 bg-success/5"
+                        : isActive
+                        ? "border-l-primary"
+                        : isOverdue
+                        ? "border-l-destructive"
+                        : "border-l-muted"
                     )}
                   >
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 mb-1">
+                      <div className="flex flex-wrap items-center gap-2 mb-1">
                         <h3 className="font-semibold text-foreground text-sm truncate">{task.title}</h3>
                         <span
                           className={cn(
                             "rounded-full border px-2 py-0.5 font-mono text-[9px] uppercase tracking-widest",
-                            isActive
+                            isCompleted
                               ? "bg-success/15 text-success border-success/30"
+                              : isActive
+                              ? "bg-primary/15 text-primary border-primary/30"
                               : isOverdue
                               ? "bg-destructive/15 text-destructive border-destructive/30"
                               : "bg-muted text-muted-foreground border-border"
                           )}
                         >
-                          {isActive ? "In Progress" : isOverdue ? "Overdue" : "Scheduled"}
+                          {isCompleted ? "Completed" : isActive ? "In Progress" : isOverdue ? "Overdue" : "Scheduled"}
+                        </span>
+
+                        {/* Dependency Status Badge */}
+                        {deps.length > 0 ? (
+                          hasBlockers ? (
+                            <span
+                              className="inline-flex items-center gap-1 rounded-full border border-warning/30 bg-warning/15 px-2 py-0.5 text-[9px] font-medium text-warning"
+                              title={`Blocked by: ${uncompletedDeps.map((d) => d.title).join(", ")}`}
+                            >
+                              <Clock className="size-2.5" /> Waiting on {uncompletedDeps.length} task{uncompletedDeps.length > 1 ? "s" : ""}
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-success/30 bg-success/15 px-2 py-0.5 text-[9px] font-medium text-success">
+                              <CheckCircle2 className="size-2.5" /> Prerequisites Met
+                            </span>
+                          )
+                        ) : (
+                          <span className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-2 py-0.5 text-[9px] font-medium text-muted-foreground">
+                            Independent
+                          </span>
+                        )}
+
+                        {/* Hours estimate pill */}
+                        <span className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-elevated px-2 py-0.5 font-mono text-[9px] text-muted-foreground">
+                          <Clock className="size-2.5 text-primary/70" />
+                          {task.logged_hours || 0}h / {task.estimate_hours || 0}h est
                         </span>
                       </div>
+
                       <p className="text-xs text-muted-foreground line-clamp-1">{task.description || "No description."}</p>
+
+                      {/* Prerequisite titles list if any */}
+                      {deps.length > 0 && (
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground">
+                          <span className="font-semibold text-foreground/80 flex items-center gap-1">
+                            <GitFork className="size-2.5 rotate-180" /> Depends on:
+                          </span>
+                          {deps.map((d) => (
+                            <span
+                              key={d.id}
+                              className={cn(
+                                "rounded-md px-1.5 py-0.5 border text-[9px] font-medium",
+                                d.status === "completed"
+                                  ? "bg-success/10 text-success border-success/30"
+                                  : "bg-elevated text-foreground border-border"
+                              )}
+                            >
+                              {d.title} {d.status === "completed" ? "✓" : "⏳"}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
 
-                    <div className="flex items-center justify-between md:justify-end gap-6 shrink-0">
+                    <div className="flex items-center justify-between md:justify-end gap-5 shrink-0">
                       <div className="text-right">
                         <p className="font-mono text-xs text-foreground flex items-center gap-1 justify-end">
                           <CalendarDays className="size-3 text-muted-foreground" />
@@ -394,8 +500,8 @@ function ProjectDetailPage() {
                             {format(parseISO(task.start_date), "MMM d")} → {format(parseISO(task.end_date), "MMM d, yyyy")}
                           </span>
                         </p>
-                        <p className={cn("text-eyebrow text-[9px] mt-0.5", daysLeft <= 1 ? "text-destructive" : "text-muted-foreground")}>
-                          {daysLeft > 0 ? `${daysLeft} days remaining` : daysLeft === 0 ? "Due today" : `${Math.abs(daysLeft)} days overdue`}
+                        <p className={cn("text-eyebrow text-[9px] mt-0.5", !isCompleted && daysLeft <= 1 ? "text-destructive" : "text-muted-foreground")}>
+                          {isCompleted ? "Delivered" : daysLeft > 0 ? `${daysLeft} days remaining` : daysLeft === 0 ? "Due today" : `${Math.abs(daysLeft)} days overdue`}
                         </p>
                       </div>
 
@@ -419,6 +525,27 @@ function ProjectDetailPage() {
                             </span>
                           ))
                         )}
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex items-center gap-1 border-l border-border pl-3">
+                        <button
+                          onClick={() => {
+                            setEditingTask(task);
+                            setShowTaskModal(true);
+                          }}
+                          className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors cursor-pointer"
+                          title="Edit Task & Dependencies"
+                        >
+                          <Edit2 className="size-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteTask(task.id, task.title)}
+                          className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors cursor-pointer"
+                          title="Delete Task"
+                        >
+                          <Trash2 className="size-3.5" />
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -603,60 +730,126 @@ function ProjectDetailPage() {
         </div>
       )}
 
-      {/* Create Task Modal */}
+      {/* Task Modal (Create & Edit with Dependencies & Estimates) */}
       {showTaskModal && (
-        <CreateTaskModal
+        <TaskModal
           projectId={projectId}
           employees={assignedMembers}
-          onClose={() => setShowTaskModal(false)}
-          onCreated={() => {
+          allTasks={tasks}
+          initialTask={editingTask}
+          onClose={() => {
             setShowTaskModal(false);
+            setEditingTask(null);
+          }}
+          onSaved={() => {
+            setShowTaskModal(false);
+            setEditingTask(null);
             load();
           }}
+        />
+      )}
+
+      {/* DAG Topology Visualizer Modal */}
+      {showGraphModal && (
+        <DAGTopologyModal
+          projectName={project.title}
+          tasks={tasks}
+          employees={allEmployees}
+          onClose={() => setShowGraphModal(false)}
         />
       )}
     </AppShell>
   );
 }
 
-function CreateTaskModal({
+function TaskModal({
   projectId,
   employees,
+  allTasks,
+  initialTask,
   onClose,
-  onCreated,
+  onSaved,
 }: {
   projectId: string;
   employees: UserProfile[];
+  allTasks: Task[];
+  initialTask?: Task | null;
   onClose: () => void;
-  onCreated: () => void;
+  onSaved: () => void;
 }) {
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [startDate, setStartDate] = useState(format(new Date(), "yyyy-MM-dd"));
-  const [endDate, setEndDate] = useState("");
-  const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
+  const isEditing = Boolean(initialTask);
+  const [title, setTitle] = useState(initialTask?.title || "");
+  const [description, setDescription] = useState(initialTask?.description || "");
+  const [startDate, setStartDate] = useState(
+    initialTask?.start_date ? format(parseISO(initialTask.start_date), "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd")
+  );
+  const [endDate, setEndDate] = useState(
+    initialTask?.end_date ? format(parseISO(initialTask.end_date), "yyyy-MM-dd") : ""
+  );
+  const [assigneeIds, setAssigneeIds] = useState<string[]>(initialTask?.assignee_ids || []);
+  const [estimateHours, setEstimateHours] = useState<number>(initialTask?.estimate_hours || 0);
+  const [status, setStatus] = useState<"active" | "completed">(initialTask?.status || "active");
+  const [dependsOn, setDependsOn] = useState<string[]>(() => {
+    if (!initialTask?.depends_on) return [];
+    return (initialTask.depends_on as any[]).map((d) => (typeof d === "object" ? String(d._id || d.id) : String(d)));
+  });
+  const [cycleError, setCycleError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // Filter out self when editing so self-dependency cannot be chosen
+  const candidatePrerequisites = allTasks.filter((t) => t.id !== initialTask?.id);
 
   const toggleAssignee = (id: string) =>
     setAssigneeIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+
+  const toggleDependency = (id: string) => {
+    setCycleError(null);
+    setDependsOn((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title || !startDate || !endDate) return;
     setLoading(true);
+    setCycleError(null);
+
     try {
-      await createTask({
-        project_id: projectId,
-        title,
-        description,
-        start_date: startDate,
-        end_date: endDate,
-        assignee_ids: assigneeIds,
-      });
-      toast.success(`Task "${title}" created successfully!`);
-      onCreated();
+      if (isEditing && initialTask) {
+        await updateTask(initialTask.id, {
+          title: title.trim(),
+          description: description.trim(),
+          start_date: startDate,
+          end_date: endDate,
+          assignee_ids: assigneeIds,
+          estimate_hours: Math.max(0, Number(estimateHours) || 0),
+          status,
+          depends_on: dependsOn,
+        });
+        toast.success(`Task "${title}" updated successfully!`);
+      } else {
+        await createTask({
+          project_id: projectId,
+          title: title.trim(),
+          description: description.trim(),
+          start_date: startDate,
+          end_date: endDate,
+          assignee_ids: assigneeIds,
+          estimate_hours: Math.max(0, Number(estimateHours) || 0),
+          depends_on: dependsOn,
+        });
+        toast.success(`Task "${title}" created successfully!`);
+      }
+      onSaved();
     } catch (err: any) {
-      toast.error(err.message ?? "Failed to create task");
+      if (
+        err.status === 409 ||
+        err.data?.error === "Circular dependency detected" ||
+        (err.message && (err.message.includes("circular dependency") || err.message.includes("Circular dependency")))
+      ) {
+        setCycleError(err.message);
+      } else {
+        toast.error(err.message ?? (isEditing ? "Failed to update task" : "Failed to create task"));
+      }
     } finally {
       setLoading(false);
     }
@@ -664,39 +857,60 @@ function CreateTaskModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
-      <div className="panel w-full max-w-lg p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between mb-5">
+      <div className="panel w-full max-w-xl p-6 shadow-2xl max-h-[92vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-4">
           <div>
-            <h2 className="font-display text-lg font-bold text-foreground">Create New Task</h2>
-            <p className="text-eyebrow text-[10px]">Schedule task milestones and assign team members</p>
+            <h2 className="font-display text-lg font-bold text-foreground">
+              {isEditing ? "Edit Task & Dependencies" : "Create New Task"}
+            </h2>
+            <p className="text-eyebrow text-[10px]">
+              {isEditing ? "Configure task milestones, hours estimate, and prerequisites" : "Schedule milestones and build dependency DAG"}
+            </p>
           </div>
           <button onClick={onClose} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted cursor-pointer">
             <X className="size-5" />
           </button>
         </div>
+
+        {/* Inline Cycle Conflict Banner */}
+        {cycleError && (
+          <div className="mb-4 rounded-xl border border-destructive/40 bg-destructive/10 p-3.5 text-xs text-destructive flex items-start gap-2.5 animate-in fade-in">
+            <AlertCircle className="size-4 shrink-0 mt-0.5 text-destructive" />
+            <div>
+              <p className="font-semibold text-destructive">Circular Dependency Blocked (DAG Rule)</p>
+              <p className="text-[11px] mt-0.5 opacity-90 leading-relaxed">{cycleError}</p>
+            </div>
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="text-eyebrow mb-1.5 block">Task Title</label>
             <input
               type="text"
               value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              onChange={(e) => {
+                setTitle(e.target.value);
+                if (cycleError) setCycleError(null);
+              }}
               placeholder="e.g. Build GraphQL Mutations & Auth Middleware"
               required
               className="w-full rounded-xl border border-input bg-elevated px-3.5 py-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary transition-all"
             />
           </div>
+
           <div>
             <label className="text-eyebrow mb-1.5 block">Description</label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Deliverable specifications, acceptance criteria..."
+              placeholder="Deliverable specifications, acceptance criteria, prerequisites..."
               rows={2}
               className="w-full resize-none rounded-xl border border-input bg-elevated px-3.5 py-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary transition-all"
             />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="text-eyebrow mb-1.5 block">Start Date</label>
               <input
@@ -718,23 +932,120 @@ function CreateTaskModal({
                 className="w-full rounded-xl border border-input bg-elevated px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all"
               />
             </div>
+            <div>
+              <label className="text-eyebrow mb-1.5 block">Estimate Hours</label>
+              <input
+                type="number"
+                min="0"
+                step="0.5"
+                value={estimateHours}
+                onChange={(e) => setEstimateHours(Math.max(0, parseFloat(e.target.value) || 0))}
+                className="w-full rounded-xl border border-input bg-elevated px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all"
+              />
+            </div>
           </div>
+
+          {isEditing && (
+            <div>
+              <label className="text-eyebrow mb-1.5 block">Task Status</label>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setStatus("active")}
+                  className={cn(
+                    "flex-1 py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer",
+                    status === "active"
+                      ? "border-primary bg-primary/15 text-primary"
+                      : "border-border bg-elevated text-muted-foreground hover:bg-muted"
+                  )}
+                >
+                  ⚡ Active / In Progress
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStatus("completed")}
+                  className={cn(
+                    "flex-1 py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer",
+                    status === "completed"
+                      ? "border-success bg-success/15 text-success"
+                      : "border-border bg-elevated text-muted-foreground hover:bg-muted"
+                  )}
+                >
+                  ✓ Completed / Delivered
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* DAG Prerequisites Multi-Select */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-eyebrow block">Prerequisites (Tasks that must complete before this one)</label>
+              <span className="text-[10px] text-muted-foreground font-mono">
+                {dependsOn.length} selected
+              </span>
+            </div>
+            {candidatePrerequisites.length === 0 ? (
+              <p className="text-xs text-muted-foreground italic panel p-3 bg-elevated/40 text-center">
+                No other tasks available in this project to set as prerequisites.
+              </p>
+            ) : (
+              <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1 border border-border/80 rounded-xl p-2 bg-elevated/30">
+                {candidatePrerequisites.map((cand) => {
+                  const isChecked = dependsOn.includes(cand.id);
+                  return (
+                    <label
+                      key={cand.id}
+                      className={cn(
+                        "flex items-center gap-3 rounded-lg border p-2 text-xs cursor-pointer transition-all",
+                        isChecked
+                          ? "border-primary/70 bg-primary/10 text-foreground"
+                          : "border-border/60 bg-elevated/80 text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                      )}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => toggleDependency(cand.id)}
+                        className="accent-primary cursor-pointer"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <span className="font-semibold block truncate">{cand.title}</span>
+                      </div>
+                      <span
+                        className={cn(
+                          "text-[9px] font-mono uppercase px-1.5 py-0.2 rounded border",
+                          cand.status === "completed"
+                            ? "bg-success/15 text-success border-success/30"
+                            : "bg-muted text-muted-foreground border-border"
+                        )}
+                      >
+                        {cand.status === "completed" ? "Done" : "Active"}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Assign Developers */}
           <div>
             <label className="text-eyebrow mb-2 block">Assign Allocated Developers</label>
             {employees.length === 0 ? (
-              <p className="text-xs text-warning italic">
-                ⚠️ No team members are allocated to this project yet. Please add members first using "Manage Team".
+              <p className="text-xs text-warning italic panel p-3 bg-warning/5 border border-warning/20 rounded-xl">
+                ⚠️ No team members are allocated to this project yet. Please allocate members using "Manage Team".
               </p>
             ) : (
-              <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+              <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
                 {employees.map((emp) => (
                   <label
                     key={emp.id}
                     className={cn(
-                      "flex items-center gap-3 rounded-xl border p-2.5 cursor-pointer transition-all",
+                      "flex items-center gap-3 rounded-xl border p-2 cursor-pointer transition-all text-xs",
                       assigneeIds.includes(emp.id)
-                        ? "border-primary/60 bg-primary/10"
-                        : "border-border bg-elevated hover:border-primary/30"
+                        ? "border-primary/60 bg-primary/10 font-semibold text-foreground"
+                        : "border-border bg-elevated text-muted-foreground hover:border-primary/30"
                     )}
                   >
                     <input
@@ -743,13 +1054,16 @@ function CreateTaskModal({
                       onChange={() => toggleAssignee(emp.id)}
                       className="accent-primary cursor-pointer"
                     />
-                    <span className="text-xs font-semibold text-foreground">{emp.full_name}</span>
-                    <span className="text-[11px] text-muted-foreground ml-auto">{emp.role_title}</span>
+                    <span className="truncate">{emp.full_name}</span>
+                    <span className="text-[10px] text-muted-foreground ml-auto">
+                      {emp.dynamicRole?.title || emp.role_title}
+                    </span>
                   </label>
                 ))}
               </div>
             )}
           </div>
+
           <div className="flex gap-2 pt-2">
             <button
               type="button"
@@ -763,11 +1077,239 @@ function CreateTaskModal({
               disabled={loading}
               className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-primary py-2.5 text-xs font-bold text-primary-foreground hover:bg-primary/90 disabled:opacity-60 cursor-pointer shadow-glow"
             >
-              {loading ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
-              {loading ? "Creating…" : "Create Task"}
+              {loading ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : isEditing ? (
+                <Edit2 className="size-4" />
+              ) : (
+                <Plus className="size-4" />
+              )}
+              {loading ? (isEditing ? "Saving…" : "Creating…") : isEditing ? "Save Changes" : "Create Task"}
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+function DAGTopologyModal({
+  projectName,
+  tasks,
+  employees,
+  onClose,
+}: {
+  projectName: string;
+  tasks: Task[];
+  employees: UserProfile[];
+  onClose: () => void;
+}) {
+  const rootTasks = tasks.filter((t) => (t.depends_on || []).length === 0);
+  const dependentTasks = tasks.filter((t) => (t.depends_on || []).length > 0);
+  const completedTasks = tasks.filter((t) => t.status === "completed");
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
+      <div className="panel w-full max-w-3xl p-6 shadow-2xl max-h-[92vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-5 border-b border-border pb-4">
+          <div className="flex items-center gap-3">
+            <div className="size-9 rounded-xl bg-primary/15 border border-primary/30 flex items-center justify-center text-primary">
+              <Network className="size-5" />
+            </div>
+            <div>
+              <h2 className="font-display text-lg font-bold text-foreground">Dependency Graph (DAG) Topology</h2>
+              <p className="text-eyebrow text-[10px]">Acyclic Execution Pipeline · {projectName}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted cursor-pointer">
+            <X className="size-5" />
+          </button>
+        </div>
+
+        {/* Stats Row */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mb-6">
+          <div className="panel p-3 bg-elevated/40 text-center">
+            <p className="text-eyebrow text-[9px]">Total Nodes</p>
+            <p className="font-display text-xl font-bold text-foreground">{tasks.length}</p>
+          </div>
+          <div className="panel p-3 bg-elevated/40 text-center">
+            <p className="text-eyebrow text-[9px]">Root (Independent)</p>
+            <p className="font-display text-xl font-bold text-primary">{rootTasks.length}</p>
+          </div>
+          <div className="panel p-3 bg-elevated/40 text-center">
+            <p className="text-eyebrow text-[9px]">Chained (Dependent)</p>
+            <p className="font-display text-xl font-bold text-amber-400">{dependentTasks.length}</p>
+          </div>
+          <div className="panel p-3 bg-elevated/40 text-center">
+            <p className="text-eyebrow text-[9px]">Delivered</p>
+            <p className="font-display text-xl font-bold text-success">{completedTasks.length}</p>
+          </div>
+        </div>
+
+        {tasks.length === 0 ? (
+          <div className="panel p-8 text-center text-muted-foreground text-xs">
+            No tasks scheduled in this project yet. Add tasks to visualize the dependency graph.
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {/* Roots Section */}
+            <div>
+              <div className="flex items-center gap-2 mb-2.5">
+                <span className="size-2 rounded-full bg-primary" />
+                <h3 className="text-xs font-bold uppercase tracking-wider text-foreground">
+                  Root Tasks (Ready to Execute / No Blockers)
+                </h3>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {rootTasks.map((task) => {
+                  const unlocks = tasks.filter((t) => {
+                    const deps = (t.depends_on || []).map((d: any) =>
+                      typeof d === "object" ? String(d._id || d.id) : String(d)
+                    );
+                    return deps.includes(task.id);
+                  });
+
+                  return (
+                    <div
+                      key={task.id}
+                      className="panel p-3 bg-card border-border/80 hover:border-primary/40 transition-colors"
+                    >
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <span className="font-semibold text-xs text-foreground truncate">{task.title}</span>
+                        <span
+                          className={cn(
+                            "text-[8px] font-mono uppercase px-1.5 py-0.2 rounded border shrink-0",
+                            task.status === "completed"
+                              ? "bg-success/15 text-success border-success/30"
+                              : "bg-primary/15 text-primary border-primary/30"
+                          )}
+                        >
+                          {task.status === "completed" ? "Done" : "Ready"}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-muted-foreground line-clamp-1 mb-2">
+                        {task.description || "No description"}
+                      </p>
+                      <div className="flex items-center justify-between text-[10px] text-muted-foreground border-t border-border/50 pt-2">
+                        <span>⏱️ {task.estimate_hours || 0}h est</span>
+                        {unlocks.length > 0 ? (
+                          <span className="text-primary font-medium flex items-center gap-1">
+                            <ArrowRight className="size-2.5" /> Unlocks {unlocks.length} task{unlocks.length > 1 ? "s" : ""}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground/60 italic">Terminal</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Dependent Tasks Section */}
+            <div>
+              <div className="flex items-center gap-2 mb-2.5">
+                <span className="size-2 rounded-full bg-amber-400" />
+                <h3 className="text-xs font-bold uppercase tracking-wider text-foreground">
+                  Chained Tasks (Requires Prerequisite Completion)
+                </h3>
+              </div>
+              {dependentTasks.length === 0 ? (
+                <p className="text-xs text-muted-foreground italic panel p-3 text-center">
+                  All current tasks are independent roots.
+                </p>
+              ) : (
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {dependentTasks.map((task) => {
+                    const deps = (task.depends_on || []).map((d: any) => {
+                      if (typeof d === "object" && d !== null) {
+                        return { id: String(d._id || d.id), title: d.title, status: d.status };
+                      }
+                      const match = tasks.find((t) => t.id === d);
+                      return { id: String(d), title: match?.title || "Prerequisite", status: match?.status || "active" };
+                    });
+                    const uncompleted = deps.filter((d) => d.status !== "completed");
+                    const unlocks = tasks.filter((t) => {
+                      const dList = (t.depends_on || []).map((d: any) =>
+                        typeof d === "object" ? String(d._id || d.id) : String(d)
+                      );
+                      return dList.includes(task.id);
+                    });
+
+                    return (
+                      <div
+                        key={task.id}
+                        className="panel p-3 bg-card border-border/80 hover:border-amber-400/40 transition-colors"
+                      >
+                        <div className="flex items-center justify-between gap-2 mb-1">
+                          <span className="font-semibold text-xs text-foreground truncate">{task.title}</span>
+                          <span
+                            className={cn(
+                              "text-[8px] font-mono uppercase px-1.5 py-0.2 rounded border shrink-0",
+                              task.status === "completed"
+                                ? "bg-success/15 text-success border-success/30"
+                                : uncompleted.length === 0
+                                ? "bg-primary/15 text-primary border-primary/30"
+                                : "bg-warning/15 text-warning border-warning/30"
+                            )}
+                          >
+                            {task.status === "completed"
+                              ? "Done"
+                              : uncompleted.length === 0
+                              ? "Ready"
+                              : `Blocked (${uncompleted.length})`}
+                          </span>
+                        </div>
+
+                        {/* Inbound dependencies */}
+                        <div className="space-y-1 my-2">
+                          <p className="text-[9px] text-muted-foreground font-semibold flex items-center gap-1">
+                            <GitFork className="size-2.5 rotate-180 text-amber-400" /> Prerequisite Chain:
+                          </p>
+                          <div className="flex flex-wrap gap-1">
+                            {deps.map((d) => (
+                              <span
+                                key={d.id}
+                                className={cn(
+                                  "rounded px-1.5 py-0.5 text-[9px] border font-medium",
+                                  d.status === "completed"
+                                    ? "bg-success/10 text-success border-success/30"
+                                    : "bg-warning/10 text-warning border-warning/30"
+                                )}
+                              >
+                                {d.title} {d.status === "completed" ? "✓" : "⏳"}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between text-[10px] text-muted-foreground border-t border-border/50 pt-2">
+                          <span>⏱️ {task.estimate_hours || 0}h est</span>
+                          {unlocks.length > 0 ? (
+                            <span className="text-primary font-medium flex items-center gap-1">
+                              <ArrowRight className="size-2.5" /> Unlocks {unlocks.length}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground/60 italic">Terminal</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        <div className="mt-6 pt-3 border-t border-border flex justify-end">
+          <button
+            onClick={onClose}
+            className="rounded-xl border border-border bg-card px-4 py-2 text-xs font-semibold text-foreground hover:bg-muted cursor-pointer"
+          >
+            Close Graph
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -43,17 +43,23 @@ Traditional enterprise project management tools (Jira, Asana, Monday.com) are fr
 - **Dedicated Admin Control (`/pm/roles`)**: Product Lead interface with interactive skill tag chips, domain badges, and daily cap hours configuration.
 - **Project Team Allocation with Roles**: Projects assign team members with specific DynamicRoles and daily hour allocations rather than generic memberships.
 
-### 2. 📅 Interactive Calendar Matrix GUI
+### 3. 🕸️ Task Dependency Graph (DAG) & Cycle Detection (Phase 2)
+- **Directed Acyclic Graph (DAG) Engine**: Enforce strict prerequisite execution dependencies (`depends_on: [TaskId]`) and hours estimation (`estimate_hours`, `logged_hours`).
+- **Zero-Cycle Guarantee**: Integrated pure DFS graph coloring cycle detector (`checkForCycle`) returning exact circular paths (e.g., `Task A → Task B → Task C → Task A`) on HTTP 409 conflict.
+- **Prerequisite Delete Guard**: Blocks deletion of any task if other downstream tasks depend on it, preventing dangling references.
+- **DAG Topology Visualizer**: Interactive topology viewer breaking project work into Independent Roots (Ready to Execute) and Chained Milestones.
+
+### 4. 📅 Interactive Calendar Matrix GUI
 - **Day-by-Day Contributor Matrix**: Interactive grid showing real-time contributor status (`Completed`, `In Progress`, `Blocked`, `No Log`).
 - **Instant Log Inspector Modal**: Click any log cell to inspect submitted deliverables, actual hours spent, blocker descriptions, and PR links.
 
-### 3. 👥 Employee 360 & Workload Capacity Engine
+### 5. 👥 Employee 360 & Workload Capacity Engine
 - **Capacity Gauge**: Visual circular gauge displaying real-time allocation percentage across all active projects.
 - **Multi-Project Team Allocation**: Add and remove contributors from projects with automatic role matching.
 - **High-Priority Project Guardrail**: Mark critical initiatives as **High Priority** so developers with multiple commitments know where to focus first.
 - **1-Click Dossier Export**: Generate and print clean executive performance dossiers.
 
-### 4. 🧠 5-Dimension AI Summary & Copilot Hub
+### 6. 🧠 5-Dimension AI Summary & Copilot Hub
 - **Single-Log & Multi-Log Summaries**: Synthesize daily standup entries into concise bulleted highlights.
 - **Project-Level & Sprint Velocity Insights**: Identify critical-path blockers and predict delivery variance.
 - **Employee 360 & Org-Wide Synthesis**: Executive health checks across engineering, design, and QA.

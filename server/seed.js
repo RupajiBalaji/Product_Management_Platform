@@ -262,29 +262,48 @@ async function seedDatabase(currentUserId = "lead_sarah_connor") {
       created_by: currentUserId,
     });
 
-    // Create 2 tasks per project
+    // Create 3 chained DAG tasks per project
     const task1 = await Task.create({
       project_id: project._id,
-      title: `${project.title.split(" ")[0]} Frontend & UI Polish`,
-      description: "Deliver pixel-perfect component implementations and audit accessibility.",
+      title: `${project.title.split(" ")[0]} Architecture & Data Models`,
+      description: "Define core database schemas, indexes, and write API validation contracts.",
       start_date: new Date(today.getTime() - 20 * 86400000).toISOString().split("T")[0],
-      end_date: new Date(today.getTime() + 10 * 86400000).toISOString().split("T")[0],
-      assignee_ids: [projData.member_ids[0], projData.member_ids[2] || projData.member_ids[1]],
-      status: "active",
+      end_date: new Date(today.getTime() - 2 * 86400000).toISOString().split("T")[0],
+      assignee_ids: [projData.member_ids[1]],
+      status: "completed",
+      estimate_hours: 40,
+      logged_hours: 38,
+      depends_on: [],
     });
 
     const task2 = await Task.create({
       project_id: project._id,
-      title: `${project.title.split(" ")[0]} API & Database Integration`,
-      description: "Build robust REST endpoints, rate limiting, and write schema migrations.",
-      start_date: new Date(today.getTime() - 15 * 86400000).toISOString().split("T")[0],
-      end_date: new Date(today.getTime() + 15 * 86400000).toISOString().split("T")[0],
-      assignee_ids: [projData.member_ids[1]],
+      title: `${project.title.split(" ")[0]} Frontend & UI Polish`,
+      description: "Deliver pixel-perfect component implementations and audit accessibility.",
+      start_date: new Date(today.getTime() - 5 * 86400000).toISOString().split("T")[0],
+      end_date: new Date(today.getTime() + 10 * 86400000).toISOString().split("T")[0],
+      assignee_ids: [projData.member_ids[0], projData.member_ids[2] || projData.member_ids[1]],
       status: "active",
+      estimate_hours: 32,
+      logged_hours: 16,
+      depends_on: [task1._id],
+    });
+
+    const task3 = await Task.create({
+      project_id: project._id,
+      title: `${project.title.split(" ")[0]} E2E Automation & Security Gate`,
+      description: "Full regression test suites, penetration checks, and pipeline verification.",
+      start_date: new Date(today.getTime() + 5 * 86400000).toISOString().split("T")[0],
+      end_date: new Date(today.getTime() + 20 * 86400000).toISOString().split("T")[0],
+      assignee_ids: [projData.member_ids[2] || projData.member_ids[0]],
+      status: "active",
+      estimate_hours: 24,
+      logged_hours: 0,
+      depends_on: [task2._id],
     });
 
     // Generate historical daily logs for past 15 days
-    for (const task of [task1, task2]) {
+    for (const task of [task1, task2, task3]) {
       for (const empId of task.assignee_ids) {
         for (let i = 15; i >= 0; i--) {
           const logDate = new Date(today.getTime() - i * 86400000).toISOString().split("T")[0];

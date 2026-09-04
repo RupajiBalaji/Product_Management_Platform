@@ -47,6 +47,9 @@ const taskSchema = new mongoose.Schema(
       enum: ["active", "completed"],
       default: "active",
     },
+    depends_on: [{ type: mongoose.Schema.Types.ObjectId, ref: "Task" }],
+    estimate_hours: { type: Number, default: 0, min: 0 },
+    logged_hours: { type: Number, default: 0, min: 0 },
   },
   { timestamps: { createdAt: "created_at", updatedAt: "updated_at" } }
 );
@@ -54,6 +57,7 @@ const taskSchema = new mongoose.Schema(
 taskSchema.index({ project_id: 1 });
 taskSchema.index({ assignee_ids: 1 });
 taskSchema.index({ start_date: 1, end_date: 1 });
+taskSchema.index({ depends_on: 1 });
 
 const dailyLogSchema = new mongoose.Schema(
   {

@@ -26,8 +26,11 @@ export async function apiFetch(endpoint: string, options: RequestInit = {}) {
 
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
-    const message = errorData.error || `HTTP error ${res.status}: ${res.statusText}`;
-    throw new Error(message);
+    const message = errorData.message || errorData.error || `HTTP error ${res.status}: ${res.statusText}`;
+    const err: any = new Error(message);
+    err.status = res.status;
+    err.data = errorData;
+    throw err;
   }
 
   return res.json();
@@ -304,12 +307,58 @@ export async function createTask(data: {
   start_date: string;
   end_date: string;
   assignee_ids: string[];
+  depends_on?: string[];
+  estimate_hours?: number;
 }): Promise<Task> {
   const result = await apiFetch("/api/tasks", {
     method: "POST",
     body: JSON.stringify(data),
   });
   return normalizeDoc(result);
+}
+
+export async function updateTask(
+  taskId: string,
+  data: Partial<{
+    title: string;
+    description: string;
+    start_date: string;
+    end_date: string;
+    assignee_ids: string[];
+    status: "active" | "completed";
+    estimate_hours: number;
+    logged_hours: number;
+    depends_on: string[];
+  }>
+): Promise<Task> {
+  const result = await apiFetch(`/api/tasks/${taskId}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+  return normalizeDoc(result.task || result);
+}
+
+export async function updateTaskDependencies(
+  taskId: string,
+  dependsOn: string[]
+): Promise<{ success: boolean; task?: Task; error?: string; cyclePath?: string[]; message?: string }> {
+  return await apiFetch(`/api/tasks/${taskId}/dependencies`, {
+    method: "PATCH",
+    body: JSON.stringify({ depends_on: dependsOn }),
+  });
+}
+
+export async function deleteTask(taskId: string): Promise<void> {
+  await apiFetch(`/api/tasks/${taskId}`, { method: "DELETE" });
+}
+
+export async function getProjectTaskGraph(projectId: string): Promise<Task[]> {
+  try {
+    const data = await apiFetch(`/api/tasks/project/${projectId}/graph`);
+    return normalizeDocs(data.tasks || []);
+  } catch {
+    return [];
+  }
 }
 
 export async function getTasksByProject(projectId: string): Promise<Task[]> {
