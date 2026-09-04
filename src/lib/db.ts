@@ -881,5 +881,59 @@ export async function updateUserCostRate(
   });
 }
 
+// ─── Phase 9: Subject Matter Expert (SME) Invites & Deliberation ──────────────
 
+export async function getCreationThread(
+  projectId: string
+): Promise<{ success: boolean; thread: import("@/lib/types").CreationThread }> {
+  return await apiFetch(`/api/projects/${projectId}/creation-thread`);
+}
 
+export async function postCreationThreadMessage(
+  projectId: string,
+  content: string
+): Promise<{ success: boolean; message: import("@/lib/types").CreationThreadMessage }> {
+  return await apiFetch(`/api/projects/${projectId}/creation-thread/messages`, {
+    method: "POST",
+    body: JSON.stringify({ content }),
+  });
+}
+
+export async function inviteSMEExpert(
+  projectId: string,
+  userId: string
+): Promise<{ success: boolean; message: string; invited_expert: import("@/lib/types").InvitedExpert }> {
+  return await apiFetch(`/api/projects/${projectId}/creation-thread/invite-expert`, {
+    method: "POST",
+    body: JSON.stringify({ user_id: userId }),
+  });
+}
+
+export async function revokeSMEExpert(
+  projectId: string,
+  userId: string
+): Promise<{ success: boolean; message: string }> {
+  return await apiFetch(`/api/projects/${projectId}/creation-thread/revoke-expert`, {
+    method: "POST",
+    body: JSON.stringify({ user_id: userId }),
+  });
+}
+
+export async function finalizeCreationThread(
+  projectId: string
+): Promise<{ success: boolean; message: string; thread: import("@/lib/types").CreationThread }> {
+  return await apiFetch(`/api/projects/${projectId}/creation-thread/finalize`, {
+    method: "POST",
+  });
+}
+
+export async function getMySMEInvitations(): Promise<{
+  success: boolean;
+  invitations: import("@/lib/types").SMEInvitationItem[];
+}> {
+  try {
+    return await apiFetch("/api/creation-threads/my-invitations");
+  } catch {
+    return { success: true, invitations: [] };
+  }
+}

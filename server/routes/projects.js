@@ -7,6 +7,7 @@ const AuditLog = require("../models/AuditLog");
 const { verifyToken, requirePM, requireProductLead } = require("../middleware/auth");
 const { checkCapacityConflict, resolveConflictByPriority } = require("../lib/capacityRegistry");
 const { calculateProjectCost, calculateBudgetBurn } = require("../lib/costCalculator");
+const { finalizeCreationThreadHelper } = require("./creationThread");
 
 // Get all projects with member counts
 router.get("/", verifyToken, async (req, res) => {
@@ -74,7 +75,13 @@ router.get("/:id", verifyToken, async (req, res) => {
       })
     );
 
-    res.json({ ...project.toObject(), members: enrichedMembers });
+    const isProductLead = req.userType === "product_lead" || req.userType === "pm";
+    const projectObj = project.toObject();
+    if (!isProductLead) {
+      delete projectObj.budgeted_cost;
+    }
+
+    res.json({ ...projectObj, members: enrichedMembers });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -103,11 +110,22 @@ router.post("/", verifyToken, requirePM, async (req, res) => {
 // Update project status
 router.patch("/:id/status", verifyToken, requirePM, async (req, res) => {
   try {
+    const { status } = req.body;
     const project = await Project.findByIdAndUpdate(
       req.params.id,
-      { status: req.body.status },
+      { status },
       { new: true }
     );
+
+    // If project is launched / approved (active or completed), finalize deliberation thread
+    if (["active", "completed"].includes(status)) {
+      try {
+        await finalizeCreationThreadHelper(req.params.id, req.uid);
+      } catch (fErr) {
+        console.warn("Could not finalize creation thread:", fErr);
+      }
+    }
+
     res.json(project);
   } catch (err) {
     res.status(500).json({ error: err.message });

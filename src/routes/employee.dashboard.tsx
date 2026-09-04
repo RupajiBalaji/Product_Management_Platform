@@ -17,11 +17,18 @@ import {
   ListTree,
   Info,
   ShieldAlert,
+  MessageSquare,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { useAuth } from "@/context/AuthContext";
-import { getEmployeeProjects, getMyTasks, getDailyLog, getLogsByEmployee } from "@/lib/db";
-import type { Task, Project, DailyLog } from "@/lib/types";
+import {
+  getEmployeeProjects,
+  getMyTasks,
+  getDailyLog,
+  getLogsByEmployee,
+  getMySMEInvitations,
+} from "@/lib/db";
+import type { Task, Project, DailyLog, SMEInvitationItem } from "@/lib/types";
 import {
   PRIORITY_STYLES,
   PRIORITY_WEIGHT,
@@ -41,6 +48,7 @@ function EmployeeDashboard() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [logs, setLogs] = useState<DailyLog[]>([]);
+  const [smeInvitations, setSmeInvitations] = useState<SMEInvitationItem[]>([]);
   const [todayLogged, setTodayLogged] = useState<Record<string, boolean>>({});
   const [selectedProjectId, setSelectedProjectId] = useState<string>("all");
   const [onlyHighPriority, setOnlyHighPriority] = useState<boolean>(false);
@@ -52,11 +60,16 @@ function EmployeeDashboard() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [projs, tsks, userLogs] = await Promise.all([
+      const [projs, tsks, userLogs, smeRes] = await Promise.all([
         getEmployeeProjects(),
         getMyTasks(),
         userProfile ? getLogsByEmployee(userProfile.id) : Promise.resolve([]),
+        getMySMEInvitations().catch(() => ({ success: true, invitations: [] })),
       ]);
+
+      if (smeRes && smeRes.invitations) {
+        setSmeInvitations(smeRes.invitations);
+      }
 
       // Sort projects with P1 / P2 priority first
       const sortedProjs = [...projs].sort(
@@ -172,6 +185,74 @@ function EmployeeDashboard() {
             <span>Focus on High Priority</span>
             <ArrowRight className="size-3.5" />
           </button>
+        </div>
+      )}
+
+      {/* Active SME Consultations Section */}
+      {smeInvitations.length > 0 && (
+        <div className="panel p-5 mb-6 border-l-4 border-l-indigo-500 bg-gradient-to-r from-indigo-500/15 via-indigo-500/5 to-transparent shadow-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+            <div className="flex items-center gap-2.5">
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-indigo-500/20 text-indigo-400">
+                <MessageSquare className="size-5" />
+              </span>
+              <div>
+                <h3 className="font-display font-bold text-foreground text-sm flex items-center gap-2">
+                  Active SME Consultations ({smeInvitations.length})
+                  <span className="text-[9px] uppercase font-mono font-bold px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/40">
+                    Scoped Advisory
+                  </span>
+                </h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  You have been invited by Product Leadership as an Expert Advisor to deliberate on project intake and architecture.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid gap-2.5 sm:grid-cols-2">
+            {smeInvitations.map((inv) => (
+              <div
+                key={inv.threadId}
+                className="panel p-3.5 bg-card/80 border-border hover:border-indigo-500/50 transition-all flex flex-col justify-between gap-3"
+              >
+                <div>
+                  <div className="flex items-center justify-between gap-2 mb-1.5">
+                    <span className="font-display font-bold text-xs text-foreground truncate">
+                      {inv.projectTitle}
+                    </span>
+                    <span
+                      className={cn(
+                        "text-[9px] font-mono uppercase px-1.5 py-0.2 rounded border shrink-0 font-bold",
+                        PRIORITY_STYLES[normalizePriority(inv.priority)]?.badge || "text-muted-foreground"
+                      )}
+                    >
+                      {inv.priority}
+                    </span>
+                  </div>
+                  {inv.projectDescription && (
+                    <p className="text-[11px] text-muted-foreground line-clamp-2 leading-relaxed">
+                      {inv.projectDescription}
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between pt-2 border-t border-border/60">
+                  <span className="text-[10px] text-muted-foreground">
+                    Invited {inv.invitedAt ? format(new Date(inv.invitedAt), "MMM d") : "Recently"}
+                  </span>
+                  <Link
+                    to="/pm/projects/$projectId"
+                    params={{ projectId: inv.projectId }}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1 text-xs font-bold text-white hover:bg-indigo-500 transition-colors shadow-xs"
+                  >
+                    <span>Join Deliberation</span>
+                    <ArrowRight className="size-3" />
+                  </Link>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

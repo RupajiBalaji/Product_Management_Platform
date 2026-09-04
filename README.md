@@ -114,7 +114,22 @@ Traditional enterprise project management tools (Jira, Asana, Monday.com) are fr
 - **Global Resource Utilization Heatmap**: Stacked horizontal visualization comparing committed daily hours against employee capacity caps, with color-coded priority segments (P1 Red, P2 Amber, P3 Blue).
 - **Scope Change Consequence Analysis**: Pure logic calculator (`calculateCostDelta`) formatting scope impact into executive deltas (e.g. `"+45 hours × $120/hr = +$5,400"`).
 
-### 10. 📅 Interactive Calendar Matrix GUI
+### 10. 💬 Subject Matter Expert (SME) Invites & Intake Deliberation (Phase 9)
+- **Scoped SME Advisory Model**: Product Leads can invite specialized internal experts (`invited_expert`) during project intake to deliberate on architecture, feasibility, and technical scope without exposing sensitive initiative data.
+- **Strict Allowlist Filtering (`server/lib/creationThreadAccess.js`)**: Pure logic security gate returning strictly the conversation thread, title, and intent. Critical financial keys (`budgeted_cost`, `hourly_cost_rate`, `team_allocations`, `burnPct`) are guaranteed absent from SME responses.
+- **Creation Deliberation Thread (`server/models/CreationThread.js`)**:
+  - Author role snapshots at time of posting: `product_lead`, `invited_expert`, or `lead_architect`.
+  - Scoped RBAC access rules (`canAccessCreationThread`): Product Leads have universal access, assigned Lead Architects have project access, and invited experts access only active threads with non-revoked invitations.
+- **Deliberation Lifecycle Governance**:
+  - `POST /api/projects/:id/creation-thread/invite-expert`: Product Lead invites an employee, recording an immutable `SME_EXPERT_INVITED` event in `AuditLog` and dispatching a notification.
+  - `POST /api/projects/:id/creation-thread/revoke-expert`: Revokes SME consultation privileges immediately (`SME_EXPERT_REVOKED`).
+  - `POST /api/projects/:id/creation-thread/finalize`: Finalizes and locks deliberation thread, automatically stamping `revoked_at` across all active SME consultations as the project transitions to execution.
+  - Automatic status hook: Transitioning project to `active` or `completed` automatically triggers `finalizeCreationThreadHelper`.
+- **Contributor Workspace Integration**:
+  - Dedicated "Active SME Consultations" card on Developer Dashboard (`/employee/dashboard`) displaying active consultation requests with one-click direct links to join the deliberation.
+  - Interactive Creation Deliberation GUI on Project Detail view (`/pm/projects/$projectId`) with role-badged message streams, live SME chips, and SME invite modal.
+
+### 11. 📅 Interactive Calendar Matrix GUI
 - **Day-by-Day Contributor Matrix**: Interactive grid showing real-time contributor status (`Completed`, `In Progress`, `Blocked`, `No Log`).
 - **Instant Log Inspector Modal**: Click any log cell to inspect submitted deliverables, actual hours spent, blocker descriptions, and PR links.
 

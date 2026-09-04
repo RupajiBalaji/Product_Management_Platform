@@ -343,5 +343,48 @@ export interface ProjectBudgetDetail {
   memberBreakdown: MemberBudgetBreakdown[];
 }
 
+export interface CreationThreadMessage {
+  id: string;
+  _id?: string;
+  author_id: string;
+  author_name: string;
+  author_role_title?: string;
+  author_photo_url?: string;
+  author_role_at_time: "product_lead" | "invited_expert" | "lead_architect";
+  content: string;
+  created_at: string;
+}
 
+export interface InvitedExpert {
+  user_id: string;
+  user_name?: string;
+  user_role_title?: string;
+  invited_by: string;
+  invited_at: string;
+  revoked_at?: string | null;
+}
 
+export interface CreationThread {
+  id: string;
+  _id?: string;
+  project_id: string;
+  project_title: string;
+  title: string;
+  description?: string;
+  intent?: string;
+  status: "active" | "finalized";
+  messages: CreationThreadMessage[];
+  invited_experts: InvitedExpert[];
+  created_at: string;
+  is_sme_view?: boolean;
+}
+
+export interface SMEInvitationItem {
+  threadId: string;
+  projectId: string;
+  projectTitle: string;
+  projectDescription: string;
+  priority: import("@/lib/constants").ProjectPriority;
+  invitedAt: string;
+  status: "active" | "finalized";
+}

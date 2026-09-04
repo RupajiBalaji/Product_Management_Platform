@@ -26,6 +26,10 @@ import {
   ShieldAlert,
   DollarSign,
   TrendingUp,
+  MessageSquare,
+  Send,
+  Lock,
+  UserCheck,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format, parseISO, differenceInDays } from "date-fns";
@@ -46,8 +50,22 @@ import {
   updateProjectPriority,
   getProjectSlippageEvents,
   getProjectBudget,
+  getCreationThread,
+  postCreationThreadMessage,
+  inviteSMEExpert,
+  revokeSMEExpert,
+  finalizeCreationThread,
 } from "@/lib/db";
-import type { Project, Task, UserProfile, DynamicRole, ProjectBudgetDetail } from "@/lib/types";
+import type {
+  Project,
+  Task,
+  UserProfile,
+  DynamicRole,
+  ProjectBudgetDetail,
+  CreationThread,
+  CreationThreadMessage,
+  InvitedExpert,
+} from "@/lib/types";
 import type { ProjectPriority, ProjectHealthStatus } from "@/lib/constants";
 import {
   PRIORITY_STYLES,
@@ -89,6 +107,27 @@ function ProjectDetailPage() {
     userId: string; roleId?: string; dailyHours: number;
   } | null>(null);
 
+  // Phase 9: Creation Deliberation & SME Consultation
+  const [creationThread, setCreationThread] = useState<CreationThread | null>(null);
+  const [threadMsgInput, setThreadMsgInput] = useState("");
+  const [postingThreadMsg, setPostingThreadMsg] = useState(false);
+  const [showSmeModal, setShowSmeModal] = useState(false);
+  const [selectedSmeUserId, setSelectedSmeUserId] = useState("");
+  const [smeInviteLoading, setSmeInviteLoading] = useState(false);
+  const [revokingSmeId, setRevokingSmeId] = useState<string | null>(null);
+  const [finalizingThread, setFinalizingThread] = useState(false);
+
+  const loadThread = async () => {
+    try {
+      const tRes = await getCreationThread(projectId);
+      if (tRes && tRes.success) {
+        setCreationThread(tRes.thread);
+      }
+    } catch {
+      setCreationThread(null);
+    }
+  };
+
   const load = async () => {
     setLoading(true);
     try {
@@ -115,10 +154,85 @@ function ProjectDetailPage() {
           console.warn("Could not load project budget detail:", bErr);
         }
       }
+
+      await loadThread();
     } catch (err) {
       console.error("Error loading project details:", err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handlePostThreadMessage = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!threadMsgInput.trim() || postingThreadMsg) return;
+    setPostingThreadMsg(true);
+    try {
+      const res = await postCreationThreadMessage(projectId, threadMsgInput.trim());
+      if (res && res.success) {
+        setThreadMsgInput("");
+        await loadThread();
+        toast.success("Deliberation message posted");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to post message");
+    } finally {
+      setPostingThreadMsg(false);
+    }
+  };
+
+  const handleInviteSme = async () => {
+    if (!selectedSmeUserId || smeInviteLoading) return;
+    setSmeInviteLoading(true);
+    try {
+      const res = await inviteSMEExpert(projectId, selectedSmeUserId);
+      if (res && res.success) {
+        toast.success("Subject Matter Expert invited to deliberation");
+        setShowSmeModal(false);
+        setSelectedSmeUserId("");
+        await loadThread();
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to invite expert");
+    } finally {
+      setSmeInviteLoading(false);
+    }
+  };
+
+  const handleRevokeSme = async (userId: string) => {
+    setRevokingSmeId(userId);
+    try {
+      const res = await revokeSMEExpert(projectId, userId);
+      if (res && res.success) {
+        toast.success("Subject Matter Expert access revoked");
+        await loadThread();
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to revoke expert");
+    } finally {
+      setRevokingSmeId(null);
+    }
+  };
+
+  const handleFinalizeThread = async () => {
+    if (
+      !window.confirm(
+        "Finalize creation deliberation thread? This will lock discussions and revoke all active SME consultations for execution."
+      )
+    ) {
+      return;
+    }
+    setFinalizingThread(true);
+    try {
+      const res = await finalizeCreationThread(projectId);
+      if (res && res.success) {
+        toast.success("Creation deliberation thread finalized and locked");
+        await loadThread();
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to finalize thread");
+    } finally {
+      setFinalizingThread(false);
     }
   };
 
@@ -599,6 +713,190 @@ function ProjectDetailPage() {
                       </tbody>
                     </table>
                   </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ─── Phase 9: Creation Deliberation & SME Advisory Section ───────────────── */}
+          {(creationThread || isProductLead) && (
+            <div className="panel p-6 mb-6 border border-border bg-gradient-to-br from-surface to-surface-elevated shadow-xs space-y-4">
+              {/* Header */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="size-8 rounded-lg bg-indigo-500/15 flex items-center justify-center text-indigo-400">
+                    <MessageSquare className="size-4" />
+                  </div>
+                  <div>
+                    <h3 className="font-display font-bold text-base text-foreground flex items-center gap-2">
+                      Creation Deliberation & SME Consultation
+                      {creationThread?.status === "active" ? (
+                        <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                          <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                          Active Deliberation
+                        </span>
+                      ) : (
+                        <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-muted text-muted-foreground border border-border flex items-center gap-1">
+                          <Lock className="size-2.5" />
+                          Finalized (Execution Locked)
+                        </span>
+                      )}
+                      {creationThread?.is_sme_view && (
+                        <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                          SME Advisory View
+                        </span>
+                      )}
+                    </h3>
+                    <p className="text-xs text-muted-foreground">
+                      Pre-execution intake deliberation. Subject Matter Experts clarify technical scope, architecture, and feasibility.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Header Actions for Product Lead */}
+                {isProductLead && creationThread?.status === "active" && (
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setShowSmeModal(true)}
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-500/30 bg-indigo-500/10 px-3 py-1.5 text-xs font-semibold text-indigo-300 hover:bg-indigo-500/20 transition-colors cursor-pointer shadow-xs"
+                    >
+                      <UserPlus className="size-3.5" />
+                      <span>Invite SME Expert</span>
+                    </button>
+                    <button
+                      onClick={handleFinalizeThread}
+                      disabled={finalizingThread}
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-card px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground hover:border-border/80 transition-colors cursor-pointer"
+                      title="Finalize thread and lock SME consultations as project transitions to execution"
+                    >
+                      {finalizingThread ? <Loader2 className="size-3.5 animate-spin" /> : <Lock className="size-3.5" />}
+                      <span>Finalize Deliberation</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Active Subject Matter Experts Chips */}
+              {creationThread?.invited_experts && creationThread.invited_experts.length > 0 && (
+                <div className="pt-1">
+                  <div className="text-[11px] font-semibold text-muted-foreground mb-1.5">
+                    Consulting Subject Matter Experts ({creationThread.invited_experts.filter((e) => !e.revoked_at).length} active)
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {creationThread.invited_experts.map((inv) => {
+                      const isRevoked = !!inv.revoked_at;
+                      return (
+                        <div
+                          key={inv.user_id}
+                          className={cn(
+                            "inline-flex items-center gap-2 rounded-lg px-2.5 py-1 text-xs border transition-colors",
+                            isRevoked
+                              ? "border-border/50 bg-muted/20 text-muted-foreground opacity-60"
+                              : "border-indigo-500/30 bg-indigo-500/10 text-foreground"
+                          )}
+                        >
+                          <span className="size-2 rounded-full bg-indigo-400" />
+                          <span className="font-medium text-[11px]">
+                            {inv.user_name || "Expert"}
+                          </span>
+                          {inv.user_role_title && (
+                            <span className="text-[10px] text-muted-foreground">({inv.user_role_title})</span>
+                          )}
+                          {isRevoked ? (
+                            <span className="text-[9px] uppercase font-bold text-muted-foreground ml-1">Revoked</span>
+                          ) : (
+                            isProductLead &&
+                            creationThread.status === "active" && (
+                              <button
+                                onClick={() => handleRevokeSme(inv.user_id)}
+                                disabled={revokingSmeId === inv.user_id}
+                                className="text-[10px] text-rose-400 hover:text-rose-300 font-bold ml-1 hover:underline cursor-pointer"
+                                title="Revoke SME access"
+                              >
+                                {revokingSmeId === inv.user_id ? "Revoking…" : "Revoke"}
+                              </button>
+                            )
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Messages History Feed */}
+              <div className="rounded-xl border border-border/70 bg-card/60 p-4 space-y-3 max-h-80 overflow-y-auto">
+                {(!creationThread?.messages || creationThread.messages.length === 0) ? (
+                  <div className="text-center py-6 text-xs text-muted-foreground italic">
+                    No deliberation messages posted yet. Use this channel to align on technical feasibility, risk boundaries, or architectural decisions before finalizing for execution.
+                  </div>
+                ) : (
+                  creationThread.messages.map((m) => {
+                    const roleBadge =
+                      m.author_role_at_time === "product_lead"
+                        ? { label: "Product Lead", style: "bg-purple-500/15 text-purple-300 border-purple-500/30" }
+                        : m.author_role_at_time === "invited_expert"
+                        ? { label: "Subject Matter Expert", style: "bg-indigo-500/15 text-indigo-300 border-indigo-500/30" }
+                        : { label: "Lead Architect", style: "bg-blue-500/15 text-blue-300 border-blue-500/30" };
+
+                    return (
+                      <div key={m.id || m._id} className="flex items-start gap-3 text-xs">
+                        <div className="size-7 rounded-full bg-primary/20 text-primary font-bold text-[10px] flex items-center justify-center shrink-0 mt-0.5">
+                          {m.author_name
+                            ? m.author_name
+                                .split(" ")
+                                .map((n) => n[0])
+                                .join("")
+                                .slice(0, 2)
+                                .toUpperCase()
+                            : "U"}
+                        </div>
+                        <div className="flex-1 min-w-0 bg-surface-elevated/70 rounded-xl p-3 border border-border/50">
+                          <div className="flex flex-wrap items-center justify-between gap-1.5 mb-1.5">
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-foreground">{m.author_name}</span>
+                              <span className={cn("text-[9px] uppercase font-mono font-bold px-1.5 py-0.2 rounded border", roleBadge.style)}>
+                                {roleBadge.label}
+                              </span>
+                            </div>
+                            <span className="text-[10px] text-muted-foreground">
+                              {m.created_at ? format(new Date(m.created_at), "MMM d, h:mm a") : ""}
+                            </span>
+                          </div>
+                          <p className="text-xs text-foreground/90 whitespace-pre-wrap leading-relaxed">
+                            {m.content}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* Message Composer (Active thread only) */}
+              {creationThread?.status === "active" ? (
+                <form onSubmit={handlePostThreadMessage} className="flex gap-2">
+                  <input
+                    type="text"
+                    value={threadMsgInput}
+                    onChange={(e) => setThreadMsgInput(e.target.value)}
+                    placeholder="Contribute architectural clarification, feasibility insight, or guidance…"
+                    disabled={postingThreadMsg}
+                    className="flex-1 rounded-xl border border-border bg-card px-3.5 py-2 text-xs text-foreground placeholder:text-muted-foreground outline-none focus:border-primary transition-colors"
+                  />
+                  <button
+                    type="submit"
+                    disabled={postingThreadMsg || !threadMsgInput.trim()}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-xs font-bold text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 cursor-pointer shadow-xs"
+                  >
+                    {postingThreadMsg ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
+                    <span>Send</span>
+                  </button>
+                </form>
+              ) : (
+                <div className="rounded-xl border border-border/50 bg-muted/20 px-3.5 py-2 text-xs text-muted-foreground flex items-center gap-2">
+                  <Lock className="size-3.5 text-muted-foreground shrink-0" />
+                  <span>Deliberation thread is finalized. Discussions are locked for project execution.</span>
                 </div>
               )}
             </div>
@@ -1104,9 +1402,118 @@ function ProjectDetailPage() {
           onClose={() => setShowGraphModal(false)}
         />
       )}
+
+      {/* Invite Subject Matter Expert Modal */}
+      {showSmeModal && project && (
+        <InviteSMEModal
+          projectName={project.title}
+          allEmployees={allEmployees}
+          invitedExperts={creationThread?.invited_experts || []}
+          selectedUserId={selectedSmeUserId}
+          onSelectUser={setSelectedSmeUserId}
+          loading={smeInviteLoading}
+          onClose={() => {
+            setShowSmeModal(false);
+            setSelectedSmeUserId("");
+          }}
+          onSubmit={handleInviteSme}
+        />
+      )}
     </AppShell>
   );
 }
+
+function InviteSMEModal({
+  projectName,
+  allEmployees,
+  invitedExperts,
+  selectedUserId,
+  onSelectUser,
+  loading,
+  onClose,
+  onSubmit,
+}: {
+  projectName: string;
+  allEmployees: UserProfile[];
+  invitedExperts: InvitedExpert[];
+  selectedUserId: string;
+  onSelectUser: (id: string) => void;
+  loading: boolean;
+  onClose: () => void;
+  onSubmit: () => void;
+}) {
+  const activeExpertIds = (invitedExperts || [])
+    .filter((e) => !e.revoked_at)
+    .map((e) => e.user_id);
+  const availableExperts = allEmployees.filter((e) => !activeExpertIds.includes(e.id));
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
+      <div className="panel w-full max-w-md p-6 shadow-2xl space-y-4">
+        <div className="flex items-center justify-between border-b border-border pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="size-8 rounded-lg bg-indigo-500/15 flex items-center justify-center text-indigo-400">
+              <UserPlus className="size-4" />
+            </div>
+            <div>
+              <h3 className="font-display font-bold text-base text-foreground">Invite Subject Matter Expert</h3>
+              <p className="text-[11px] text-muted-foreground truncate max-w-xs">{projectName}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="rounded-lg p-1 text-muted-foreground hover:bg-muted cursor-pointer">
+            <X className="size-4" />
+          </button>
+        </div>
+
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          Invited SMEs gain scoped access exclusively to this project's Creation Deliberation thread. Sensitive financial metrics, rates, and resource capacity are strictly redacted.
+        </p>
+
+        <div className="space-y-1.5">
+          <label className="text-[11px] font-semibold text-foreground">Select Team Member / Expert</label>
+          {availableExperts.length === 0 ? (
+            <p className="text-xs text-muted-foreground italic">
+              All active team members are already participating in this deliberation thread.
+            </p>
+          ) : (
+            <select
+              value={selectedUserId}
+              onChange={(e) => onSelectUser(e.target.value)}
+              className="w-full rounded-xl border border-border bg-card px-3 py-2 text-xs text-foreground outline-none focus:border-primary"
+            >
+              <option value="">-- Choose an expert from your organization --</option>
+              {availableExperts.map((emp) => (
+                <option key={emp.id} value={emp.id}>
+                  {emp.full_name} ({emp.dynamicRole?.title || emp.role_title || "Contributor"})
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+
+        <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl border border-border bg-card px-3.5 py-1.5 text-xs font-semibold text-foreground hover:bg-muted cursor-pointer"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onSubmit}
+            disabled={!selectedUserId || loading}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-indigo-500 transition-colors disabled:opacity-50 cursor-pointer shadow-xs"
+          >
+            {loading ? <Loader2 className="size-3.5 animate-spin" /> : <UserPlus className="size-3.5" />}
+            <span>Send Invitation</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
 function TaskModal({
   projectId,
