@@ -202,3 +202,67 @@ export const SLIPPAGE_DEFAULT_OPTIONS: Record<SlippageTriggerType, string[]> = {
   ],
 };
 
+// ─── Phase 6: Employee Action Mode & Clarification Constants ──────────────────
+
+export type ActionType =
+  | "reorder"
+  | "swap_within_week"
+  | "postpone"
+  | "request_clarification";
+
+export const ACTION_TYPE_LABELS: Record<ActionType, { label: string; icon: string; desc: string }> = {
+  reorder: {
+    label: "Reorder Priority",
+    icon: "↕️",
+    desc: "Change task execution sequence position without violating dependency prerequisites.",
+  },
+  swap_within_week: {
+    label: "Swap Within Week",
+    icon: "🔄",
+    desc: "Shift this task to another day in the current work week (Mon–Fri/Sun) under 40h cap.",
+  },
+  postpone: {
+    label: "Postpone (Blocked)",
+    icon: "⛔",
+    desc: "Postponement is strictly prohibited by governance rules to prevent project slippage.",
+  },
+  request_clarification: {
+    label: "Request Clarification",
+    icon: "💬",
+    desc: "Ask requirements question; pauses slippage clock until answered by Lead or AI.",
+  },
+};
+
+export type ActionStatus =
+  | "auto_approved"
+  | "blocked"
+  | "pending_clarification"
+  | "answered";
+
+export const ACTION_STATUS_STYLES: Record<
+  ActionStatus,
+  { label: string; badge: string; icon: string }
+> = {
+  auto_approved: {
+    label: "Auto-Approved",
+    badge: "border-success/40 bg-success/15 text-success font-semibold",
+    icon: "✓",
+  },
+  blocked: {
+    label: "Blocked by Rule",
+    badge: "border-destructive/40 bg-destructive/15 text-destructive font-semibold",
+    icon: "✕",
+  },
+  pending_clarification: {
+    label: "Pending Clarification",
+    badge: "border-amber-500/40 bg-amber-500/15 text-amber-300 font-semibold animate-pulse",
+    icon: "⏳",
+  },
+  answered: {
+    label: "Clarification Answered",
+    badge: "border-primary/40 bg-primary/15 text-primary font-semibold",
+    icon: "💬",
+  },
+};
+
+

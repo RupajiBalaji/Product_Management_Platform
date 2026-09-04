@@ -50,9 +50,21 @@ const taskSchema = new mongoose.Schema(
     depends_on: [{ type: mongoose.Schema.Types.ObjectId, ref: "Task" }],
     estimate_hours: { type: Number, default: 0, min: 0 },
     logged_hours: { type: Number, default: 0, min: 0 },
+    order_index: { type: Number, default: 0 },
+    slippage_frozen: { type: Boolean, default: false },
+    clarifications: [
+      {
+        question: { type: String, required: true },
+        answer: { type: String, required: true },
+        answered_by: { type: String, ref: "User" },
+        answered_at: { type: Date, default: Date.now },
+      },
+    ],
   },
   { timestamps: { createdAt: "created_at", updatedAt: "updated_at" } }
 );
+
+taskSchema.index({ project_id: 1, order_index: 1 });
 
 taskSchema.index({ project_id: 1 });
 taskSchema.index({ assignee_ids: 1 });

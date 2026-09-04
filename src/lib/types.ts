@@ -76,6 +76,17 @@ export interface Task {
   depends_on?: string[] | Array<{ _id: string; title: string; status?: string }>;
   estimate_hours?: number;
   logged_hours?: number;
+  order_index?: number;
+  slippage_frozen?: boolean;
+  clarifications?: Array<{
+    _id?: string;
+    id?: string;
+    question: string;
+    answer?: string;
+    answered_by?: string | UserProfile;
+    answered_at?: string;
+    created_at?: string;
+  }>;
   created_at: string;
 }
 
@@ -195,6 +206,26 @@ export interface SlippageEvent {
   resolved_by?: string | UserProfile;
   resolution_chosen?: string;
   resolved_at?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+// ─── Phase 6: Employee Action Request Types ───────────────────────────────────
+
+export interface ActionRequest {
+  id: string;
+  _id?: string;
+  employee_id: string | UserProfile;
+  task_id: string | Task;
+  project_id: string | Project;
+  action_type: import("@/lib/constants").ActionType;
+  status: import("@/lib/constants").ActionStatus;
+  payload?: any;
+  decision_reasoning: string;
+  clarification_question?: string;
+  clarification_answer?: string;
+  answered_by?: string | UserProfile;
+  slippage_frozen?: boolean;
   created_at?: string;
   updated_at?: string;
 }

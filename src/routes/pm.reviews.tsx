@@ -17,16 +17,19 @@ import {
   User,
   ShieldAlert,
   Send,
+  MessageSquare,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/app-shell";
 import {
   getPendingSubmissions,
   getPendingAppeals,
+  getPendingClarifications,
   reviewSubmissionHuman,
   resolveAppeal,
+  answerClarification,
 } from "@/lib/db";
-import type { Submission, Appeal } from "@/lib/types";
+import type { Submission, Appeal, ActionRequest } from "@/lib/types";
 import {
   EVALUATION_MODE_STYLES,
   SUBMISSION_STATUS_STYLES,
@@ -41,34 +44,42 @@ export const Route = createFileRoute("/pm/reviews")({
 });
 
 function ReviewsQueuePage() {
-  const [activeTab, setActiveTab] = useState<"submissions" | "appeals">("submissions");
+  const [activeTab, setActiveTab] = useState<"submissions" | "appeals" | "clarifications">("submissions");
   const [pendingSubmissions, setPendingSubmissions] = useState<Submission[]>([]);
   const [pendingAppeals, setPendingAppeals] = useState<Appeal[]>([]);
+  const [pendingClarifications, setPendingClarifications] = useState<ActionRequest[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Selected item for side-by-side review
   const [selectedSubId, setSelectedSubId] = useState<string | null>(null);
   const [selectedAppealId, setSelectedAppealId] = useState<string | null>(null);
+  const [selectedClarificationId, setSelectedClarificationId] = useState<string | null>(null);
 
   // Form review notes
   const [reviewNotes, setReviewNotes] = useState("");
+  const [clarificationAnswer, setClarificationAnswer] = useState("");
   const [submittingAction, setSubmittingAction] = useState(false);
 
   const loadData = async () => {
     setLoading(true);
     try {
-      const [subs, appeals] = await Promise.all([
+      const [subs, appeals, clarifs] = await Promise.all([
         getPendingSubmissions(),
         getPendingAppeals(),
+        getPendingClarifications(),
       ]);
       setPendingSubmissions(subs);
       setPendingAppeals(appeals);
+      setPendingClarifications(clarifs);
 
       if (subs.length > 0 && !selectedSubId) {
         setSelectedSubId(subs[0].id || subs[0]._id!);
       }
       if (appeals.length > 0 && !selectedAppealId) {
         setSelectedAppealId(appeals[0].id || appeals[0]._id!);
+      }
+      if (clarifs.length > 0 && !selectedClarificationId) {
+        setSelectedClarificationId(clarifs[0].id || clarifs[0]._id!);
       }
     } catch (err) {
       console.error("Failed to load review queues:", err);
@@ -116,8 +127,29 @@ function ReviewsQueuePage() {
     }
   };
 
+  const handleAnswerClarification = async () => {
+    if (!selectedClarificationId) return;
+    if (!clarificationAnswer.trim()) {
+      toast.error("Please provide an answer for the employee.");
+      return;
+    }
+    setSubmittingAction(true);
+    try {
+      await answerClarification(selectedClarificationId, clarificationAnswer.trim());
+      toast.success("Clarification answered! Task slippage clock unfrozen and employee notified.");
+      setClarificationAnswer("");
+      loadData();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to answer clarification");
+    } finally {
+      setSubmittingAction(false);
+    }
+  };
+
   const selectedSubmission = pendingSubmissions.find((s) => (s.id || s._id) === selectedSubId);
   const selectedAppeal = pendingAppeals.find((a) => (a.id || a._id) === selectedAppealId);
+  const selectedClarification = pendingClarifications.find((c) => (c.id || c._id) === selectedClarificationId);
+
 
   return (
     <AppShell
@@ -161,7 +193,21 @@ function ReviewsQueuePage() {
           <Scale className="size-3.5" />
           <span>Contested Appeals ({pendingAppeals.length})</span>
         </button>
+
+        <button
+          onClick={() => setActiveTab("clarifications")}
+          className={cn(
+            "inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition-all cursor-pointer",
+            activeTab === "clarifications"
+              ? "bg-amber-500 text-black shadow-xs font-bold"
+              : "border border-border bg-card text-muted-foreground hover:text-foreground"
+          )}
+        >
+          <MessageSquare className="size-3.5" />
+          <span>Clarifications Queue ({pendingClarifications.length})</span>
+        </button>
       </div>
+
 
       {loading && (
         <div className="panel p-16 flex flex-col items-center justify-center text-center">
@@ -478,6 +524,151 @@ function ReviewsQueuePage() {
           )
         )
       }
+
+      {!loading && activeTab === "clarifications" && (
+        pendingClarifications.length === 0 ? (
+          <div className="panel p-16 text-center text-muted-foreground">
+            <CheckCircle2 className="size-10 mx-auto text-success/50 mb-3" />
+            <h3 className="font-display font-bold text-base text-foreground">Clarifications Queue is Clear</h3>
+            <p className="text-xs mt-1">All employee clarification requests have been answered. Slippage timers are active.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            {/* Left Column: Pending Clarifications List */}
+            <div className="lg:col-span-5 space-y-2.5">
+              <p className="text-eyebrow text-[10px] text-muted-foreground mb-1">
+                Awaiting Clarification ({pendingClarifications.length})
+              </p>
+              {pendingClarifications.map((item) => {
+                const id = item.id || item._id;
+                const isSelected = id === selectedClarificationId;
+                const taskObj: any = item.task_id;
+                const employeeObj: any = item.employee_id;
+                const projectObj: any = item.project_id;
+
+                return (
+                  <div
+                    key={id}
+                    onClick={() => {
+                      setSelectedClarificationId(id);
+                      setClarificationAnswer("");
+                    }}
+                    className={cn(
+                      "panel p-4 cursor-pointer transition-all border text-left",
+                      isSelected
+                        ? "border-amber-500 bg-amber-500/5 shadow-xs"
+                        : "border-border hover:border-amber-500/40 bg-card"
+                    )}
+                  >
+                    <div className="flex items-start justify-between gap-2 mb-1.5">
+                      <h4 className="font-bold text-xs text-foreground truncate flex-1">
+                        {taskObj?.title || "Task Clarification"}
+                      </h4>
+                      <span className="rounded-full border border-amber-500/40 bg-amber-500/15 px-2 py-0.5 text-[9px] font-mono text-amber-300 font-bold shrink-0 animate-pulse">
+                        Clock Paused
+                      </span>
+                    </div>
+
+                    <p className="text-[11px] text-muted-foreground truncate mb-2">
+                      by <strong className="text-foreground">{employeeObj?.full_name || "Employee"}</strong> ({employeeObj?.role_title || "Contributor"})
+                      {projectObj?.title ? ` • ${projectObj.title}` : ""}
+                    </p>
+
+                    <div className="p-2 rounded-xl bg-elevated text-xs text-foreground/90 line-clamp-2 italic mb-2 border border-border/50">
+                      "{item.clarification_question}"
+                    </div>
+
+                    <div className="flex items-center justify-between text-[10px] font-mono text-muted-foreground border-t border-border/40 pt-2">
+                      <span>Asked: {item.created_at ? format(new Date(item.created_at), "MMM d, h:mm a") : ""}</span>
+                      <span className="text-amber-400 font-semibold">Answer to unfreeze →</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Right Column: Selected Clarification Details & Answer Form */}
+            <div className="lg:col-span-7">
+              {selectedClarification ? (
+                <div className="panel p-6 bg-card border-border space-y-5 sticky top-6">
+                  {/* Header */}
+                  <div className="flex items-start justify-between gap-4 border-b border-border pb-4">
+                    <div>
+                      <span className="text-eyebrow text-[10px] text-primary">
+                        {(selectedClarification.project_id as any)?.title || "Project Milestone"}
+                      </span>
+                      <h3 className="font-display font-bold text-base text-foreground mt-0.5">
+                        {(selectedClarification.task_id as any)?.title || "Task Clarification"}
+                      </h3>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Requested by <strong>{(selectedClarification.employee_id as any)?.full_name || "Employee"}</strong> ({(selectedClarification.employee_id as any)?.email})
+                      </p>
+                    </div>
+
+                    <div className="text-right shrink-0">
+                      <span className="rounded-full border border-amber-500/40 bg-amber-500/15 px-2.5 py-1 text-[10px] font-mono font-bold text-amber-300 inline-block">
+                        ⏳ Slippage Clock Paused
+                      </span>
+                      <p className="text-[10px] font-mono text-muted-foreground mt-1">
+                        {selectedClarification.created_at ? format(new Date(selectedClarification.created_at), "MMM d, yyyy h:mm a") : ""}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Clarification Question Panel */}
+                  <div className="panel p-4 bg-amber-500/10 border-amber-500/30 space-y-2">
+                    <p className="text-[10px] font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <MessageSquare className="size-3.5" /> Employee's Question:
+                    </p>
+                    <p className="text-xs text-foreground font-medium leading-relaxed">
+                      "{selectedClarification.clarification_question}"
+                    </p>
+                  </div>
+
+                  {/* Task Description Reference */}
+                  {(selectedClarification.task_id as any)?.description && (
+                    <div className="panel p-3.5 bg-elevated text-xs border-border/80 space-y-1">
+                      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                        Task Context & Requirements:
+                      </p>
+                      <p className="text-muted-foreground text-[11px] leading-relaxed">
+                        {(selectedClarification.task_id as any).description}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Answer Form */}
+                  <div className="space-y-3 pt-2 border-t border-border">
+                    <label className="text-eyebrow block">Your Clarification / Guidance</label>
+                    <textarea
+                      rows={4}
+                      value={clarificationAnswer}
+                      onChange={(e) => setClarificationAnswer(e.target.value)}
+                      placeholder="Provide precise architectural, design, or business rule guidance to unblock the employee..."
+                      className="w-full rounded-xl border border-input bg-elevated p-3 text-xs text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary resize-none"
+                    />
+
+                    <div className="flex items-center justify-between pt-2">
+                      <span className="text-[11px] text-muted-foreground">
+                        Submitting this will record your answer on the task and resume the employee's 3-day work clock.
+                      </span>
+                      <button
+                        onClick={handleAnswerClarification}
+                        disabled={submittingAction}
+                        className="inline-flex items-center gap-1.5 rounded-xl bg-amber-500 text-black px-5 py-2.5 text-xs font-bold hover:bg-amber-400 disabled:opacity-50 transition-all cursor-pointer shadow-glow shrink-0"
+                      >
+                        {submittingAction ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
+                        <span>Submit & Resume Clock</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        )
+      )}
     </AppShell>
   );
 }
+

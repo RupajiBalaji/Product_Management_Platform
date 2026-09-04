@@ -24,6 +24,7 @@ const capacityRoutes = require("./routes/capacity");
 const submissionsRoutes = require("./routes/submissions");
 const appealsRoutes = require("./routes/appeals");
 const slippageRoutes = require("./routes/slippage");
+const actionsRoutes = require("./routes/actions");
 const { startSlippageCron, runSlippageCheck } = require("./jobs/slippageChecker");
 const seedDatabase = require("./seed");
 const { verifyToken, requirePM } = require("./middleware/auth");
@@ -112,6 +113,7 @@ app.use("/api/capacity", capacityRoutes);
 app.use("/api/submissions", submissionsRoutes);
 app.use("/api/appeals", appealsRoutes);
 app.use("/api/slippage", slippageRoutes);
+app.use("/api/actions", actionsRoutes);
 
 // Internal runner endpoint for automated/manual slippage check
 app.post("/api/internal/run-slippage-check", async (req, res) => {
@@ -222,10 +224,14 @@ app.use((err, req, res, _next) => {
 });
 
 // Start Server
-const server = app.listen(PORT, () => {
-  console.log(`🚀 [Server] Production Express API running on http://localhost:${PORT}`);
-  // Initialize automated daily slippage checker cron job
-  startSlippageCron();
-});
+let server;
+if (require.main === module) {
+  server = app.listen(PORT, () => {
+    console.log(`🚀 [Server] Production Express API running on http://localhost:${PORT}`);
+    // Initialize automated daily slippage checker cron job
+    startSlippageCron();
+  });
+}
 
 module.exports = { app, server };
+

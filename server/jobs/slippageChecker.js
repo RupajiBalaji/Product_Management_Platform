@@ -3,6 +3,7 @@ const { Project, Task, DailyLog } = require("../models/models");
 const Submission = require("../models/Submission");
 const SlippageEvent = require("../models/SlippageEvent");
 const Notification = require("../models/Notification");
+const ActionRequest = require("../models/ActionRequest");
 const User = require("../models/User");
 const {
   calculatePartialWorkStreak,
@@ -26,6 +27,7 @@ async function runSlippageCheck() {
     partialWorkStreaksDetected: 0,
     rejectionLoopsDetected: 0,
     newEventsCreated: 0,
+    tasksSkippedDueToClarification: 0,
   };
 
   const fallbackLead = await User.findOne({ user_type: "product_lead" }).lean();
@@ -43,13 +45,32 @@ async function runSlippageCheck() {
     }
 
     const tasks = await Task.find({ project_id: project._id }).lean();
-    const taskIds = tasks.map((t) => t._id);
+
+    // ── Guard (Phase 6): Find tasks with open pending_clarification ActionRequest ──
+    const pendingClarifications = await ActionRequest.find({
+      project_id: project._id,
+      status: "pending_clarification",
+    }).lean();
+
+    const frozenTaskIds = new Set(
+      pendingClarifications.map((r) => r.task_id.toString())
+    );
+    // Also include tasks explicitly marked slippage_frozen: true
+    tasks.filter((t) => t.slippage_frozen).forEach((t) => frozenTaskIds.add(t._id.toString()));
+
+    const activeTaskIds = tasks
+      .filter((t) => !frozenTaskIds.has(t._id.toString()))
+      .map((t) => t._id);
+
+    results.tasksSkippedDueToClarification += frozenTaskIds.size;
 
     // ─── 1. Check Partial Work Streaks per Assigned Employee ───────────────
     for (const employeeId of memberIds) {
+      if (activeTaskIds.length === 0) continue;
+
       const submissions = await Submission.find({
         employee_id: employeeId,
-        task_id: { $in: taskIds },
+        task_id: { $in: activeTaskIds },
       })
         .sort({ created_at: -1 })
         .limit(10)
@@ -140,6 +161,8 @@ async function runSlippageCheck() {
 
     // ─── 2. Check Repeated QA Rejection Loops per Task with 3+ Submissions ─
     for (const task of tasks) {
+      if (frozenTaskIds.has(task._id.toString())) continue;
+
       const taskSubmissions = await Submission.find({ task_id: task._id })
         .sort({ created_at: 1 })
         .lean();

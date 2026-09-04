@@ -81,7 +81,15 @@ Traditional enterprise project management tools (Jira, Asana, Monday.com) are fr
   - QA Rejection Loop: `["Schedule clarification session", "Reassign to experienced teammate", "Simplify acceptance criteria"]`
 - **Sovereign Resolution & Audit Trail**: `POST /api/slippage/:id/resolve` records chosen option, marks `resolved: true`, and logs an immutable `SLIPPAGE_EVENT_RESOLVED` event in `AuditLog`.
 
-### 7. 📅 Interactive Calendar Matrix GUI
+### 7. 🔀 Employee Action Mode & Clarification Workflow (Phase 6)
+- **Autonomous Task Reordering (`POST /api/actions/reorder`)**: Employees can reorder their assigned execution sequence. Pure logic validator (`evaluateReorder`) ensures no prerequisite dependencies or downstream dependents in the DAG are violated. Auto-approved (HTTP 200) or blocked with DAG conflict path (HTTP 409).
+- **Within-Week Swapping (`POST /api/actions/swap`)**: Reassign milestone due dates to any weekday in the current planning week (Monday–Sunday). Pure logic validator (`evaluateSwapWithinWeek`) verifies week boundaries and ensures projected workload does not exceed the 40-hour weekly cap.
+- **Strict Postpone Governance (`POST /api/actions/postpone`)**: Arbitrary milestone postponements are strictly prohibited by governance rules to prevent project delivery slippage. Blocked with HTTP 403 and logged to `ActionRequest`.
+- **Requirements Clarification & Slippage Freezing (`POST /api/actions/request-clarification`)**: Employees can ask questions on specifications. Google Gemini AI immediately scans project PRD/description text to provide instant answers; if specifications are missing, `slippage_frozen` is set to `true`, freezing the 3-day slippage timer and alerting the Product Lead.
+- **Clarification Review Queue & Answer System (`/pm/reviews` & `POST /api/actions/clarifications/:id/answer`)**: Product Leads and Lead Architects review open clarification requests, submit answers, automatically unfreeze the task's slippage clock, append the Q&A to the task history, and log to `AuditLog`.
+
+### 8. 📅 Interactive Calendar Matrix GUI
+
 - **Day-by-Day Contributor Matrix**: Interactive grid showing real-time contributor status (`Completed`, `In Progress`, `Blocked`, `No Log`).
 - **Instant Log Inspector Modal**: Click any log cell to inspect submitted deliverables, actual hours spent, blocker descriptions, and PR links.
 
@@ -233,10 +241,18 @@ The repository is configured as a **Unified Web Service** on Render where Expres
 | `GET` | `/api/slippage/employee/:userId` | Get employee's slippage history (self or Lead/Architect) |
 | `POST` | `/api/slippage/:id/resolve` | Resolve slippage escalation with chosen remediation option |
 | `POST` | `/api/internal/run-slippage-check` | Trigger automated slippage detection check (cron or manual) |
+| `POST` | `/api/actions/reorder` | Reorder task position with DAG prerequisite cycle/dependency validation |
+| `POST` | `/api/actions/swap` | Swap task to another day this week under 40h workload cap |
+| `POST` | `/api/actions/postpone` | Postpone task (strictly blocked with 403 per governance rules) |
+| `POST` | `/api/actions/request-clarification` | Request task requirements clarification & pause 3-day slippage clock |
+| `GET` | `/api/actions/clarifications/pending` | List open clarification requests awaiting Product Lead answer |
+| `POST` | `/api/actions/clarifications/:id/answer` | Answer clarification, unfreeze task slippage timer, record AuditLog |
+| `GET` | `/api/actions/history/:taskId` | Retrieve full action requests audit history for a task |
 | `POST` | `/api/logs` | Submit daily work log with blocker status |
 | `GET` | `/api/analytics/matrix/:projectId` | Aggregate day-by-day contributor calendar grid |
 | `POST` | `/api/ai/summarize` | Generate multi-dimension executive synthesis |
 | `POST` | `/api/ai/chat` | Context-aware AI Copilot query endpoint |
+
 
 ---
 

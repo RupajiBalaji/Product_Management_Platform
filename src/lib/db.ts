@@ -711,4 +711,104 @@ export async function triggerManualSlippageCheck(): Promise<any> {
   return res.results;
 }
 
+// ─── Phase 6: Employee Action Mode & Clarifications ───────────────────────────
+
+export async function reorderTask(
+  taskId: string,
+  newPosition: number
+): Promise<{ success: boolean; message: string; actionRequest: import("@/lib/types").ActionRequest; task?: Task }> {
+  const res = await apiFetch("/api/actions/reorder", {
+    method: "POST",
+    body: JSON.stringify({ taskId, newPosition }),
+  });
+  return {
+    ...res,
+    actionRequest: normalizeDoc(res.actionRequest),
+    task: res.task ? normalizeDoc(res.task) : undefined,
+  };
+}
+
+export async function swapTask(
+  taskId: string,
+  targetDate: string
+): Promise<{ success: boolean; message: string; actionRequest: import("@/lib/types").ActionRequest; task?: Task }> {
+  const res = await apiFetch("/api/actions/swap", {
+    method: "POST",
+    body: JSON.stringify({ taskId, targetDate }),
+  });
+  return {
+    ...res,
+    actionRequest: normalizeDoc(res.actionRequest),
+    task: res.task ? normalizeDoc(res.task) : undefined,
+  };
+}
+
+export async function postponeTask(
+  taskId: string,
+  requestedDays: number,
+  reason: string
+): Promise<{ success: boolean; message: string; actionRequest: import("@/lib/types").ActionRequest }> {
+  const res = await apiFetch("/api/actions/postpone", {
+    method: "POST",
+    body: JSON.stringify({ taskId, requestedDays, reason }),
+  });
+  return {
+    ...res,
+    actionRequest: normalizeDoc(res.actionRequest),
+  };
+}
+
+export async function requestClarification(
+  taskId: string,
+  question: string
+): Promise<{
+  success: boolean;
+  autoAnswered: boolean;
+  answer?: string;
+  message: string;
+  actionRequest: import("@/lib/types").ActionRequest;
+}> {
+  const res = await apiFetch("/api/actions/request-clarification", {
+    method: "POST",
+    body: JSON.stringify({ taskId, question }),
+  });
+  return {
+    ...res,
+    actionRequest: normalizeDoc(res.actionRequest),
+  };
+}
+
+export async function getPendingClarifications(): Promise<import("@/lib/types").ActionRequest[]> {
+  try {
+    const res = await apiFetch("/api/actions/clarifications/pending");
+    return normalizeDocs(res.clarifications || []);
+  } catch {
+    return [];
+  }
+}
+
+export async function answerClarification(
+  id: string,
+  answer: string
+): Promise<{ success: boolean; message: string; actionRequest: import("@/lib/types").ActionRequest }> {
+  const res = await apiFetch(`/api/actions/clarifications/${id}/answer`, {
+    method: "POST",
+    body: JSON.stringify({ answer }),
+  });
+  return {
+    ...res,
+    actionRequest: normalizeDoc(res.actionRequest),
+  };
+}
+
+export async function getTaskActionHistory(taskId: string): Promise<import("@/lib/types").ActionRequest[]> {
+  try {
+    const res = await apiFetch(`/api/actions/history/${taskId}`);
+    return normalizeDocs(res.actions || []);
+  } catch {
+    return [];
+  }
+}
+
+
 
