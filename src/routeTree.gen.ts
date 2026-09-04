@@ -17,6 +17,7 @@ import { Route as EmployeeDashboardRouteImport } from './routes/employee.dashboa
 import { Route as PmAiHubRouteImport } from './routes/pm.ai-hub'
 import { Route as PmDashboardRouteImport } from './routes/pm.dashboard'
 import { Route as PmEmployeesRouteImport } from './routes/pm.employees'
+import { Route as PmRolesRouteImport } from './routes/pm.roles'
 import { Route as PmEmployeesEmployeeIdRouteImport } from './routes/pm.employees.$employeeId'
 import { Route as PmProjectsIndexRouteImport } from './routes/pm.projects.index'
 import { Route as PmProjectsProjectIdRouteImport } from './routes/pm.projects.$projectId'
@@ -63,6 +64,11 @@ const PmEmployeesRoute = PmEmployeesRouteImport.update({
   path: '/employees',
   getParentRoute: () => PmRoute,
 } as any)
+const PmRolesRoute = PmRolesRouteImport.update({
+  id: '/roles',
+  path: '/roles',
+  getParentRoute: () => PmRoute,
+} as any)
 const PmEmployeesEmployeeIdRoute = PmEmployeesEmployeeIdRouteImport.update({
   id: '/$employeeId',
   path: '/$employeeId',
@@ -99,6 +105,7 @@ export interface FileRoutesByFullPath {
   '/pm/ai-hub': typeof PmAiHubRoute
   '/pm/dashboard': typeof PmDashboardRoute
   '/pm/employees': typeof PmEmployeesRouteWithChildren
+  '/pm/roles': typeof PmRolesRoute
   '/pm/employees/$employeeId': typeof PmEmployeesEmployeeIdRoute
   '/pm/projects/$projectId': typeof PmProjectsProjectIdRouteWithChildren
   '/pm/projects/': typeof PmProjectsIndexRoute
@@ -114,6 +121,7 @@ export interface FileRoutesByTo {
   '/pm/ai-hub': typeof PmAiHubRoute
   '/pm/dashboard': typeof PmDashboardRoute
   '/pm/employees': typeof PmEmployeesRouteWithChildren
+  '/pm/roles': typeof PmRolesRoute
   '/pm/employees/$employeeId': typeof PmEmployeesEmployeeIdRoute
   '/pm/projects/$projectId': typeof PmProjectsProjectIdRouteWithChildren
   '/pm/projects': typeof PmProjectsIndexRoute
@@ -130,6 +138,7 @@ export interface FileRoutesById {
   '/pm/ai-hub': typeof PmAiHubRoute
   '/pm/dashboard': typeof PmDashboardRoute
   '/pm/employees': typeof PmEmployeesRouteWithChildren
+  '/pm/roles': typeof PmRolesRoute
   '/pm/employees/$employeeId': typeof PmEmployeesEmployeeIdRoute
   '/pm/projects/$projectId': typeof PmProjectsProjectIdRouteWithChildren
   '/pm/projects/': typeof PmProjectsIndexRoute
@@ -147,6 +156,7 @@ export interface FileRouteTypes {
     | '/pm/ai-hub'
     | '/pm/dashboard'
     | '/pm/employees'
+    | '/pm/roles'
     | '/pm/employees/$employeeId'
     | '/pm/projects/$projectId'
     | '/pm/projects/'
@@ -162,6 +172,7 @@ export interface FileRouteTypes {
     | '/pm/ai-hub'
     | '/pm/dashboard'
     | '/pm/employees'
+    | '/pm/roles'
     | '/pm/employees/$employeeId'
     | '/pm/projects/$projectId'
     | '/pm/projects'
@@ -177,6 +188,7 @@ export interface FileRouteTypes {
     | '/pm/ai-hub'
     | '/pm/dashboard'
     | '/pm/employees'
+    | '/pm/roles'
     | '/pm/employees/$employeeId'
     | '/pm/projects/$projectId'
     | '/pm/projects/'
@@ -247,6 +259,13 @@ declare module '@tanstack/react-router' {
       path: '/employees'
       fullPath: '/pm/employees'
       preLoaderRoute: typeof PmEmployeesRouteImport
+      parentRoute: typeof PmRoute
+    }
+    '/pm/roles': {
+      id: '/pm/roles'
+      path: '/roles'
+      fullPath: '/pm/roles'
+      preLoaderRoute: typeof PmRolesRouteImport
       parentRoute: typeof PmRoute
     }
     '/pm/employees/$employeeId': {
@@ -328,6 +347,7 @@ interface PmRouteChildren {
   PmAiHubRoute: typeof PmAiHubRoute
   PmDashboardRoute: typeof PmDashboardRoute
   PmEmployeesRoute: typeof PmEmployeesRouteWithChildren
+  PmRolesRoute: typeof PmRolesRoute
   PmProjectsProjectIdRoute: typeof PmProjectsProjectIdRouteWithChildren
   PmProjectsIndexRoute: typeof PmProjectsIndexRoute
 }
@@ -336,6 +356,7 @@ const PmRouteChildren: PmRouteChildren = {
   PmAiHubRoute: PmAiHubRoute,
   PmDashboardRoute: PmDashboardRoute,
   PmEmployeesRoute: PmEmployeesRouteWithChildren,
+  PmRolesRoute: PmRolesRoute,
   PmProjectsProjectIdRoute: PmProjectsProjectIdRouteWithChildren,
   PmProjectsIndexRoute: PmProjectsIndexRoute,
 }

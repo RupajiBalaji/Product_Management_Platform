@@ -2,8 +2,30 @@ import { cn } from "@/lib/utils";
 
 export { cn };
 
-export type UserType = "pm" | "employee";
+export type UserType = "product_lead" | "lead_architect" | "employee" | "pm";
 export type ProjectPriority = "low" | "medium" | "high" | "critical";
+export type ProjectStatus = "active" | "in-review" | "completed" | "frozen" | "archived";
+
+export interface DynamicRole {
+  id: string;
+  _id?: string;
+  title: string;
+  domain: string;
+  description: string;
+  skillTags: string[];
+  defaultDailyCapHours: number;
+  createdBy?: string;
+  orgScoped?: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface TeamAllocation {
+  user_id: string;
+  role_id?: string;
+  daily_hours?: number;
+  allocated_at?: string;
+}
 
 export interface UserProfile {
   id: string;
@@ -18,6 +40,8 @@ export interface UserProfile {
   projectCount?: number;
   activeTasksCount?: number;
   activeTasksInThisProject?: number;
+  dynamicRole?: DynamicRole | null;
+  allocatedDailyHours?: number;
   assignedProjects?: Array<{ _id: string; title: string; status: string; priority: ProjectPriority }>;
   created_at: string;
 }
@@ -28,9 +52,11 @@ export interface Project {
   title: string;
   description: string;
   created_by: string;
-  status: "active" | "in-review" | "completed";
+  status: ProjectStatus;
   priority: ProjectPriority;
   member_ids: string[];
+  team_allocations?: TeamAllocation[];
+  members?: UserProfile[];
   created_at: string;
 }
 

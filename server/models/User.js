@@ -23,10 +23,21 @@ const userSchema = new mongoose.Schema(
     },
     user_type: {
       type: String,
-      enum: ["pm", "employee"],
+      enum: ["product_lead", "lead_architect", "employee", "pm"],
       required: true,
       default: "employee",
       index: true,
+    },
+    delegateUserId: {
+      type: String,
+      ref: "User",
+      default: null,
+    },
+    defaultDailyCapHours: {
+      type: Number,
+      default: 8,
+      min: 1,
+      max: 24,
     },
     status: {
       type: String,

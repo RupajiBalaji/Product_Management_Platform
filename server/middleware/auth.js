@@ -56,8 +56,8 @@ async function verifyToken(req, res, next) {
         _id: uid,
         email: decoded.email || "user@acube.ai",
         full_name: decoded.name || decoded.email?.split("@")[0] || "User",
-        role_title: count === 0 ? "Project Manager" : "Contributor",
-        user_type: count === 0 ? "pm" : "employee",
+        role_title: count === 0 ? "Product Lead" : "Contributor",
+        user_type: count === 0 ? "product_lead" : "employee",
         status: "active",
       });
       await user.save();
@@ -71,11 +71,14 @@ async function verifyToken(req, res, next) {
       });
     }
 
+    // Normalize legacy 'pm' to 'product_lead'
+    const normalizedRole = user.user_type === "pm" ? "product_lead" : user.user_type;
+
     // Attach to request
     req.user = user;
     req.uid = user._id;
     req.email = user.email;
-    req.userType = user.user_type;
+    req.userType = normalizedRole;
 
     next();
   } catch (err) {
@@ -88,20 +91,39 @@ async function verifyToken(req, res, next) {
   }
 }
 
-// Role-Based Authorization Guards
-function requirePM(req, res, next) {
-  if (req.userType !== "pm") {
+// ─── 3-Tier Governance Authorization Guards ──────────────────────────────────
+
+// Tier 1: Product Lead (Full sovereign authority)
+function requireProductLead(req, res, next) {
+  if (req.userType !== "product_lead" && req.userType !== "pm") {
     return res.status(403).json({
       success: false,
-      error: "Access denied. Project Manager privileges required.",
-      code: "FORBIDDEN_PM_ONLY",
+      error: "Access denied. Product Lead privileges required.",
+      code: "FORBIDDEN_PRODUCT_LEAD_ONLY",
     });
   }
   next();
 }
 
+// Tier 1 & 2: Elevated permissions (Product Lead or Lead Architect)
+function requireLeadOrArchitect(req, res, next) {
+  if (!["product_lead", "lead_architect", "pm"].includes(req.userType)) {
+    return res.status(403).json({
+      success: false,
+      error: "Access denied. Product Lead or Lead Architect privileges required.",
+      code: "FORBIDDEN_LEAD_OR_ARCHITECT",
+    });
+  }
+  next();
+}
+
+// Backwards compatibility alias
+const requirePM = requireProductLead;
+
 module.exports = verifyToken;
 module.exports.verifyToken = verifyToken;
+module.exports.requireProductLead = requireProductLead;
+module.exports.requireLeadOrArchitect = requireLeadOrArchitect;
 module.exports.requirePM = requirePM;
 module.exports.COOKIE_NAME = COOKIE_NAME;
 module.exports.JWT_SECRET = JWT_SECRET;

@@ -7,7 +7,7 @@ const { verifyToken, requirePM } = require("../middleware/auth");
 // Get workforce directory with cross-project workload analysis
 router.get("/employees", verifyToken, async (req, res) => {
   try {
-    const employees = await User.find({ user_type: "employee" }).sort({ created_at: -1 }).lean();
+    const employees = await User.find({ user_type: { $in: ["employee", "lead_architect"] } }).sort({ created_at: -1 }).lean();
 
     // Enrich with projects assigned
     const enriched = await Promise.all(
@@ -34,8 +34,8 @@ router.get("/employees", verifyToken, async (req, res) => {
 // Get overall workforce stats
 router.get("/workforce-stats", verifyToken, async (req, res) => {
   try {
-    const totalEmployees = await User.countDocuments({ user_type: "employee" });
-    const employees = await User.find({ user_type: "employee" }, "_id").lean();
+    const totalEmployees = await User.countDocuments({ user_type: { $in: ["employee", "lead_architect"] } });
+    const employees = await User.find({ user_type: { $in: ["employee", "lead_architect"] } }, "_id").lean();
 
     let unallocatedCount = 0;
     let multiProjectCount = 0;
@@ -82,17 +82,18 @@ router.get("/:id", verifyToken, async (req, res) => {
 // Create employee
 router.post("/create-employee", verifyToken, requirePM, async (req, res) => {
   try {
-    const { uid, email, full_name, role_title } = req.body;
+    const { uid, email, full_name, role_title, user_type } = req.body;
     if (!email || !full_name) {
       return res.status(400).json({ error: "email and full_name are required" });
     }
+    const targetType = ["lead_architect", "employee"].includes(user_type) ? user_type : "employee";
     const generatedId = uid || `emp_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const user = new User({
       _id: generatedId,
       email: email.toLowerCase().trim(),
       full_name: full_name.trim(),
-      role_title: role_title ? role_title.trim() : "Team Member",
-      user_type: "employee",
+      role_title: role_title ? role_title.trim() : (targetType === "lead_architect" ? "Lead Architect" : "Team Member"),
+      user_type: targetType,
     });
     await user.save();
     res.status(201).json(user);

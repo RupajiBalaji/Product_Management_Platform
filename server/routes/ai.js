@@ -15,12 +15,13 @@ const { verifyToken } = require("../middleware/auth");
 
 const MODEL_TIERS = [
   "gemini-3.5-flash-lite",      // Fastest & lightest — highest free RPM
-  "gemini-3.1-flash-lite",      // Next-gen ultra-efficient
-  "gemini-2.5-flash-lite",      // Lightweight high-throughput
-  "gemini-flash-lite-latest",   // Latest flash-lite alias
+  "gemini-3.6-flash",           // Primary high capability flash
   "gemini-3.5-flash",           // Fast capable flash
-  "gemini-3.1-flash-lite-image",// Flash lite variant
-  "gemini-2.5-flash",           // Reliable mid-tier flash
+  "gemini-flash-lite-latest",   // Latest flash-lite alias
+  "gemini-flash-latest",        // Latest flash alias
+  "gemini-3.1-flash-lite",      // Efficient lightweight tier
+  "gemini-2.5-flash-lite",      // Fallback
+  "gemini-2.5-flash",           // Fallback
   "gemini-2.5-pro",             // Deep reasoning (last resort)
 ];
 
@@ -29,7 +30,7 @@ const MODEL_TIERS = [
 const API_KEYS = (process.env.GEMINI_API_KEY || "")
   .split(",")
   .map((k) => k.trim())
-  .filter((k) => k.startsWith("AIzaSy")); // Only accept valid Gemini key format
+  .filter((k) => (k.startsWith("AIzaSy") || k.startsWith("AQ.") || k.length > 25) && !k.includes("your_gemini")); // Accept valid Gemini key formats
 
 // Cache GoogleGenAI client instances per key (one instance per key, reused)
 const _clientCache = new Map();

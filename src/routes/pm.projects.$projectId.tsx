@@ -24,12 +24,13 @@ import {
   getProjectById,
   getTasksByProject,
   getAllEmployees,
+  getRoles,
   createTask,
   addProjectMember,
   removeProjectMember,
   updateProjectPriority,
 } from "@/lib/db";
-import type { Project, Task, UserProfile, ProjectPriority } from "@/lib/types";
+import type { Project, Task, UserProfile, ProjectPriority, DynamicRole } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/pm/projects/$projectId")({
@@ -48,6 +49,9 @@ function ProjectDetailPage() {
   const [project, setProject] = useState<(Project & { members?: UserProfile[] }) | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [allEmployees, setAllEmployees] = useState<UserProfile[]>([]);
+  const [roles, setRoles] = useState<DynamicRole[]>([]);
+  const [selectedRoleId, setSelectedRoleId] = useState<string>("");
+  const [dailyHoursAllocated, setDailyHoursAllocated] = useState<number>(8);
   const [loading, setLoading] = useState(true);
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [showMemberModal, setShowMemberModal] = useState(false);
@@ -58,14 +62,16 @@ function ProjectDetailPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const [proj, tsks, emps] = await Promise.all([
+      const [proj, tsks, emps, dynamicRoles] = await Promise.all([
         getProjectById(projectId),
         getTasksByProject(projectId),
         getAllEmployees(),
+        getRoles(),
       ]);
       setProject(proj);
       setTasks(tsks);
       setAllEmployees(emps);
+      setRoles(dynamicRoles);
     } catch (err) {
       console.error("Error loading project details:", err);
     } finally {
@@ -95,10 +101,17 @@ function ProjectDetailPage() {
     if (!selectedNewMember) return;
     setMemberLoading(true);
     try {
-      const updated = await addProjectMember(projectId, selectedNewMember);
+      const updated = await addProjectMember(
+        projectId,
+        selectedNewMember,
+        selectedRoleId || undefined,
+        dailyHoursAllocated
+      );
       setProject(updated);
       setSelectedNewMember("");
-      toast.success("Team member allocated to project!");
+      setSelectedRoleId("");
+      setDailyHoursAllocated(8);
+      toast.success("Team member allocated with dynamic role!");
     } catch (err: any) {
       toast.error(err.message || "Failed to add member");
     } finally {
@@ -131,7 +144,9 @@ function ProjectDetailPage() {
   }
 
   const assignedMemberIds = project?.member_ids || [];
-  const assignedMembers = allEmployees.filter((e) => assignedMemberIds.includes(e.id));
+  const assignedMembers = (project?.members && project.members.length > 0)
+    ? project.members
+    : allEmployees.filter((e) => assignedMemberIds.includes(e.id));
   const availableToAdd = allEmployees.filter((e) => !assignedMemberIds.includes(e.id));
 
   const currentPriority = project?.priority || "medium";
@@ -263,7 +278,7 @@ function ProjectDetailPage() {
                       assignedMembers.map((e) => (
                         <div
                           key={e.id}
-                          className="inline-flex items-center gap-2 rounded-xl border border-border bg-elevated px-3 py-1.5 text-xs text-foreground group"
+                          className="inline-flex items-center gap-2 rounded-xl border border-border bg-elevated px-3 py-1.5 text-xs text-foreground group shadow-xs"
                         >
                           <span className="flex size-5 items-center justify-center rounded-full bg-primary/20 font-bold text-primary text-[9px]">
                             {e.full_name
@@ -274,7 +289,14 @@ function ProjectDetailPage() {
                               .toUpperCase()}
                           </span>
                           <span className="font-medium">{e.full_name}</span>
-                          <span className="text-[10px] text-muted-foreground">({e.role_title || "Developer"})</span>
+                          <span className="text-[10px] text-primary/90 font-semibold">
+                            ({e.dynamicRole?.title || e.role_title || "Contributor"})
+                          </span>
+                          {e.allocatedDailyHours && (
+                            <span className="text-[9px] text-muted-foreground font-mono bg-card px-1.5 py-0.5 rounded-md border border-border/50">
+                              {e.allocatedDailyHours}h/d
+                            </span>
+                          )}
                         </div>
                       ))
                     )}
@@ -424,33 +446,85 @@ function ProjectDetailPage() {
               </button>
             </div>
 
-            {/* Add New Member Section */}
+            {/* Add New Member Section with Dynamic Role */}
             <form onSubmit={handleAddMember} className="mb-6 p-4 rounded-2xl border border-border bg-elevated/40 space-y-3">
-              <label className="text-eyebrow text-[10px] block font-semibold text-foreground">
-                Allocate New Developer to Team
-              </label>
-              <div className="flex flex-col sm:flex-row gap-2.5 items-stretch sm:items-center">
+              <div className="flex items-center justify-between">
+                <label className="text-eyebrow text-[10px] font-semibold text-foreground flex items-center gap-1">
+                  <ShieldCheck className="size-3.5 text-primary" />
+                  Allocate Developer with Dynamic Role
+                </label>
+                <Link to="/pm/roles" className="text-[10px] text-primary hover:underline font-medium">
+                  Roles Admin →
+                </Link>
+              </div>
+
+              <div>
+                <label className="text-[11px] text-muted-foreground block mb-1">Developer</label>
                 <select
                   value={selectedNewMember}
                   onChange={(e) => setSelectedNewMember(e.target.value)}
-                  className="min-w-0 flex-1 w-full rounded-xl border border-input bg-card px-3 py-2 text-xs text-foreground outline-none focus:border-primary truncate"
+                  className="w-full rounded-xl border border-input bg-card px-3 py-2 text-xs text-foreground outline-none focus:border-primary"
                 >
                   <option value="">Select an available developer...</option>
                   {availableToAdd.map((emp) => (
                     <option key={emp.id} value={emp.id}>
-                      {emp.full_name} — {emp.role_title || "Developer"} ({emp.projectCount || 0} other projects)
+                      {emp.full_name} — {emp.role_title || "Contributor"} ({emp.projectCount || 0} active projects)
                     </option>
                   ))}
                 </select>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div>
+                  <label className="text-[11px] text-muted-foreground block mb-1">Dynamic Role</label>
+                  <select
+                    value={selectedRoleId}
+                    onChange={(e) => {
+                      const rId = e.target.value;
+                      setSelectedRoleId(rId);
+                      const matched = roles.find((r) => (r.id || r._id) === rId);
+                      if (matched?.defaultDailyCapHours) {
+                        setDailyHoursAllocated(matched.defaultDailyCapHours);
+                      }
+                    }}
+                    className="w-full rounded-xl border border-input bg-card px-3 py-2 text-xs text-foreground outline-none focus:border-primary"
+                  >
+                    <option value="">Select specialized role...</option>
+                    {roles.map((r) => (
+                      <option key={r.id || r._id} value={r.id || r._id}>
+                        {r.title} ({r.domain} · {r.defaultDailyCapHours}h cap)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[11px] text-muted-foreground block mb-1">Daily Allocation</label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      min="1"
+                      max="24"
+                      value={dailyHoursAllocated}
+                      onChange={(e) => setDailyHoursAllocated(Number(e.target.value))}
+                      className="w-full rounded-xl border border-input bg-card px-3 py-2 text-xs text-foreground outline-none focus:border-primary pr-12"
+                    />
+                    <span className="absolute right-3 top-2 text-xs text-muted-foreground font-mono">hrs</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-1">
                 <button
                   type="submit"
                   disabled={!selectedNewMember || memberLoading}
-                  className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-xs font-bold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-all cursor-pointer shadow-glow shrink-0 whitespace-nowrap"
+                  className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-xs font-bold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-all cursor-pointer shadow-glow"
                 >
                   {memberLoading ? <Loader2 className="size-3.5 animate-spin" /> : <UserPlus className="size-3.5" />}
-                  <span>Add Member</span>
+                  <span>Allocate with Role</span>
                 </button>
               </div>
+
               {availableToAdd.length === 0 && (
                 <p className="text-[11px] text-muted-foreground italic">
                   All employees in the company are currently allocated to this project.
@@ -488,8 +562,17 @@ function ProjectDetailPage() {
                             .toUpperCase()}
                         </span>
                         <div className="min-w-0 flex-1">
-                          <p className="text-xs font-semibold text-foreground truncate">{emp.full_name}</p>
-                          <p className="text-[10px] text-muted-foreground truncate">{emp.role_title} · {emp.email}</p>
+                          <div className="flex items-center gap-2">
+                            <p className="text-xs font-semibold text-foreground truncate">{emp.full_name}</p>
+                            {emp.dynamicRole && (
+                              <span className="inline-flex items-center rounded-md bg-primary/10 text-primary border border-primary/20 px-1.5 py-0.2 text-[9px] font-semibold truncate max-w-[150px]">
+                                {emp.dynamicRole.title}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-muted-foreground truncate">
+                            {emp.allocatedDailyHours ? `${emp.allocatedDailyHours} hrs/day · ` : ""}{emp.email}
+                          </p>
                         </div>
                       </div>
 

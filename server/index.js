@@ -1,3 +1,6 @@
+const path = require("path");
+require("dotenv").config({ path: path.resolve(__dirname, "../.env") });
+require("dotenv").config({ path: path.resolve(__dirname, ".env") });
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
@@ -15,6 +18,7 @@ const tasksRoutes = require("./routes/tasks");
 const logsRoutes = require("./routes/logs");
 const analyticsRoutes = require("./routes/analytics");
 const aiRoutes = require("./routes/ai");
+const rolesRoutes = require("./routes/roles");
 const seedDatabase = require("./seed");
 const { verifyToken, requirePM } = require("./middleware/auth");
 
@@ -97,6 +101,7 @@ app.use("/api/tasks", tasksRoutes);
 app.use("/api/logs", logsRoutes);
 app.use("/api/analytics", analyticsRoutes);
 app.use("/api/ai", aiRoutes);
+app.use("/api/roles", rolesRoutes);
 
 // Seed API endpoint (Protected)
 app.post("/api/seed", verifyToken, async (req, res) => {

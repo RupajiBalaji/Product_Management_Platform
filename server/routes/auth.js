@@ -49,12 +49,15 @@ router.post("/session", async (req, res) => {
     let user = await User.findById(uid);
     if (!user) {
       const count = await User.countDocuments();
+      const initialRole = (user_type === "pm" || user_type === "product_lead" || count === 0)
+        ? "product_lead"
+        : (user_type === "lead_architect" ? "lead_architect" : "employee");
       user = new User({
         _id: uid,
         email: email.toLowerCase(),
         full_name: full_name || email.split("@")[0],
-        role_title: role_title || (user_type === "pm" || count === 0 ? "Project Manager" : "Developer / Contributor"),
-        user_type: user_type || (count === 0 ? "pm" : "employee"),
+        role_title: role_title || (initialRole === "product_lead" ? "Product Lead" : (initialRole === "lead_architect" ? "Lead Architect" : "Developer / Contributor")),
+        user_type: initialRole,
         photo_url: photo_url || "",
         status: "active",
         last_login_at: new Date(),
@@ -101,13 +104,25 @@ router.post("/logout", (req, res) => {
   res.json({ success: true, message: "Logged out successfully" });
 });
 
-// Toggle role (PM <-> Developer)
+// Cycle or set 3-tier role (product_lead -> lead_architect -> employee)
 router.post("/switch-role", verifyToken, async (req, res) => {
   try {
     const user = await User.findById(req.uid);
     if (!user) return res.status(404).json({ success: false, error: "User not found" });
 
-    user.user_type = user.user_type === "pm" ? "employee" : "pm";
+    const { targetRole } = req.body || {};
+    const validRoles = ["product_lead", "lead_architect", "employee"];
+
+    if (targetRole && validRoles.includes(targetRole)) {
+      user.user_type = targetRole;
+    } else {
+      // Cycle: product_lead -> lead_architect -> employee -> product_lead
+      const current = user.user_type === "pm" ? "product_lead" : user.user_type;
+      if (current === "product_lead") user.user_type = "lead_architect";
+      else if (current === "lead_architect") user.user_type = "employee";
+      else user.user_type = "product_lead";
+    }
+
     user.session_version = (user.session_version || 1) + 1;
     await user.save();
 

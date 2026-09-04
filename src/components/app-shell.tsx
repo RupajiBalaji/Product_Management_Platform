@@ -12,6 +12,9 @@ import {
   Layers,
   Repeat,
   Zap,
+  Bot,
+  ShieldCheck,
+  Cpu,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { useAuth } from "@/context/AuthContext";
@@ -22,8 +25,16 @@ import { toast } from "sonner";
 import { useNavigate } from "@tanstack/react-router";
 import { AICopilotSidebar } from "./AICopilotSidebar";
 
-const pmNav = [
+const productLeadNav = [
   { to: "/pm/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { to: "/pm/projects", label: "Projects & Tasks", icon: FolderKanban },
+  { to: "/pm/roles", label: "Dynamic Roles", icon: ShieldCheck },
+  { to: "/pm/employees", label: "Workforce Directory", icon: Users },
+  { to: "/pm/ai-hub", label: "AI Summary Hub", icon: Sparkles },
+];
+
+const leadArchitectNav = [
+  { to: "/pm/dashboard", label: "Architecture & Projects", icon: LayoutDashboard },
   { to: "/pm/projects", label: "Projects & Tasks", icon: FolderKanban },
   { to: "/pm/employees", label: "Workforce Directory", icon: Users },
   { to: "/pm/ai-hub", label: "AI Summary Hub", icon: Sparkles },
@@ -50,8 +61,22 @@ export function AppShell({ children, title, eyebrow, actions }: AppShellProps) {
   const [switchingRole, setSwitchingRole] = useState(false);
   const navigate = useNavigate();
 
-  const isPM = userProfile?.user_type === "pm";
-  const nav = isPM ? pmNav : employeeNav;
+  const isProductLead = userProfile?.user_type === "product_lead" || userProfile?.user_type === "pm";
+  const isLeadArchitect = userProfile?.user_type === "lead_architect";
+  const isEmployee = !isProductLead && !isLeadArchitect;
+  const nav = isProductLead ? productLeadNav : (isLeadArchitect ? leadArchitectNav : employeeNav);
+
+  const getRoleLabel = (type?: string) => {
+    if (type === "product_lead" || type === "pm") return "Product Lead";
+    if (type === "lead_architect") return "Lead Architect";
+    return "Contributor";
+  };
+
+  const getNextRoleLabel = (type?: string) => {
+    if (type === "product_lead" || type === "pm") return "Lead Architect";
+    if (type === "lead_architect") return "Developer View";
+    return "Product Lead View";
+  };
 
   const handleLogout = async () => {
     await logout();
@@ -64,8 +89,12 @@ export function AppShell({ children, title, eyebrow, actions }: AppShellProps) {
     try {
       const updated = await toggleUserRole();
       setUserProfile(updated);
-      toast.success(`Switched role to: ${updated.user_type === "pm" ? "Project Manager" : "Developer / Contributor"}`);
-      navigate({ to: updated.user_type === "pm" ? "/pm/dashboard" : "/employee/dashboard" });
+      toast.success(`Switched role to: ${getRoleLabel(updated.user_type)}`);
+      if (updated.user_type === "employee") {
+        navigate({ to: "/employee/dashboard" });
+      } else {
+        navigate({ to: "/pm/dashboard" });
+      }
     } catch (err: any) {
       toast.error(err.message || "Failed to switch role");
     } finally {
@@ -77,7 +106,7 @@ export function AppShell({ children, title, eyebrow, actions }: AppShellProps) {
     <>
       {/* Brand Logo Header */}
       <Link
-        to={isPM ? "/pm/dashboard" : "/employee/dashboard"}
+        to={isEmployee ? "/employee/dashboard" : "/pm/dashboard"}
         className="mb-6 flex items-center gap-3 px-1.5 py-1 group"
       >
         <div className="flex size-10 items-center justify-center shrink-0 group-hover:scale-105 transition-transform duration-200">
@@ -88,7 +117,7 @@ export function AppShell({ children, title, eyebrow, actions }: AppShellProps) {
             Autonomous PM
           </span>
           <span className="text-eyebrow text-[9px] text-primary/90 font-bold uppercase tracking-wider">
-            {isPM ? "Project Manager" : "Developer Portal"}
+            {getRoleLabel(userProfile?.user_type)}
           </span>
         </div>
       </Link>
@@ -149,10 +178,10 @@ export function AppShell({ children, title, eyebrow, actions }: AppShellProps) {
             onClick={handleToggleRole}
             disabled={switchingRole}
             className="w-full flex items-center justify-center gap-1.5 rounded-xl border border-border bg-card/80 py-2 px-2 text-[11px] font-semibold text-muted-foreground hover:text-foreground hover:border-primary/40 hover:bg-card transition-all cursor-pointer shadow-xs"
-            title="Switch between PM and Developer views"
+            title="Switch between 3-tier governance roles"
           >
             <Repeat className={cn("size-3.5 text-primary", switchingRole && "animate-spin")} />
-            <span>Switch to {isPM ? "Developer View" : "PM View"}</span>
+            <span>Switch to {getNextRoleLabel(userProfile?.user_type)}</span>
           </button>
         </div>
 

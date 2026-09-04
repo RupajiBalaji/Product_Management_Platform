@@ -31,10 +31,17 @@ Traditional enterprise project management tools (Jira, Asana, Monday.com) are fr
 
 ## ✨ Core Features
 
-### 1. 🛡️ Dual-Role Role-Based Access Control (RBAC)
-- **Project Manager (`pm`)**: Full management command center (`/pm/dashboard`, `/pm/projects`, `/pm/employees`, `/pm/ai-hub`).
-- **Developer (`employee`)**: Distraction-free contributor workspace (`/employee/dashboard`, `/employee/tasks/$taskId/log`).
-- Automatic role detection and redirect upon authentication.
+### 1. 🛡️ 3-Tier Governance & Role-Based Access Control (RBAC)
+- **Product Lead (`product_lead`)**: Full sovereign command authority (`/pm/dashboard`, `/pm/projects`, `/pm/roles`, `/pm/employees`, `/pm/ai-hub`).
+- **Lead Architect (`lead_architect`)**: Elevated oversight permissions—reviews architectural appeals, audits technical allocations, and inspects cross-project telemetry.
+- **Contributor / Employee (`employee`)**: Distraction-free workspace (`/employee/dashboard`, `/employee/tasks/$taskId/log`) focused on assigned deliverables.
+- **Append-Only Audit Registry (`AuditLog`)**: Immutable audit trail automatically recording every sensitive write operation (`actorId`, `action`, `entityType`, `entityId`, `before`, `after`, `timestamp`).
+
+### 2. ⚡ Dynamic Role Engine (Phase 1)
+- **Granular Capability Taxonomy**: Define custom roles (`title`, `domain`, `description`, `skillTags`, `defaultDailyCapHours`).
+- **Pre-Seeded Roles**: Lead Solutions Architect, Senior Backend Engineer, UI/UX Design Specialist, Growth Copywriter, QA & Test Automation Lead.
+- **Dedicated Admin Control (`/pm/roles`)**: Product Lead interface with interactive skill tag chips, domain badges, and daily cap hours configuration.
+- **Project Team Allocation with Roles**: Projects assign team members with specific DynamicRoles and daily hour allocations rather than generic memberships.
 
 ### 2. 📅 Interactive Calendar Matrix GUI
 - **Day-by-Day Contributor Matrix**: Interactive grid showing real-time contributor status (`Completed`, `In Progress`, `Blocked`, `No Log`).

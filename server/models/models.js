@@ -7,7 +7,7 @@ const projectSchema = new mongoose.Schema(
     created_by: { type: String, ref: "User", required: true },
     status: {
       type: String,
-      enum: ["active", "in-review", "completed"],
+      enum: ["active", "in-review", "completed", "frozen", "archived"],
       default: "active",
       index: true,
     },
@@ -18,6 +18,14 @@ const projectSchema = new mongoose.Schema(
       index: true,
     },
     member_ids: [{ type: String, ref: "User" }],
+    team_allocations: [
+      {
+        user_id: { type: String, ref: "User", required: true },
+        role_id: { type: mongoose.Schema.Types.ObjectId, ref: "DynamicRole" },
+        daily_hours: { type: Number, default: 8, min: 1, max: 24 },
+        allocated_at: { type: Date, default: Date.now },
+      },
+    ],
   },
   { timestamps: { createdAt: "created_at", updatedAt: "updated_at" } }
 );

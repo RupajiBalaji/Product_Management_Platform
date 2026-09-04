@@ -1,5 +1,5 @@
 import { auth } from "./firebase";
-import type { UserProfile, Project, Task, DailyLog, ProjectPriority } from "./types";
+import type { UserProfile, Project, Task, DailyLog, ProjectPriority, DynamicRole, TeamAllocation } from "./types";
 
 const API_BASE = import.meta.env.VITE_API_URL !== undefined && import.meta.env.VITE_API_URL !== ""
   ? import.meta.env.VITE_API_URL
@@ -212,15 +212,77 @@ export async function updateProjectPriority(id: string, priority: ProjectPriorit
   return normalizeDoc(data);
 }
 
-export async function addProjectMember(projectId: string, userId: string): Promise<Project & { members?: UserProfile[] }> {
+export async function addProjectMember(
+  projectId: string,
+  userId: string,
+  roleId?: string,
+  dailyHours?: number
+): Promise<Project & { members?: UserProfile[] }> {
   const data = await apiFetch(`/api/projects/${projectId}/members`, {
     method: "POST",
-    body: JSON.stringify({ userId }),
+    body: JSON.stringify({ userId, roleId, dailyHours }),
   });
   return {
     ...normalizeDoc(data),
     members: normalizeDocs(data.members || []),
   };
+}
+
+// ─── Dynamic Role Engine (Phase 1) ──────────────────────────────────────────
+
+export async function getRoles(): Promise<DynamicRole[]> {
+  try {
+    const data = await apiFetch("/api/roles");
+    return normalizeDocs(data.roles || []);
+  } catch {
+    return [];
+  }
+}
+
+export async function getRoleById(id: string): Promise<DynamicRole | null> {
+  try {
+    const data = await apiFetch(`/api/roles/${id}`);
+    return normalizeDoc(data.role);
+  } catch {
+    return null;
+  }
+}
+
+export async function createDynamicRole(data: {
+  title: string;
+  domain: string;
+  description?: string;
+  skillTags: string[];
+  defaultDailyCapHours: number;
+  orgScoped?: boolean;
+}): Promise<DynamicRole> {
+  const res = await apiFetch("/api/roles", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+  return normalizeDoc(res.role);
+}
+
+export async function updateDynamicRole(
+  id: string,
+  data: Partial<{
+    title: string;
+    domain: string;
+    description: string;
+    skillTags: string[];
+    defaultDailyCapHours: number;
+    orgScoped: boolean;
+  }>
+): Promise<DynamicRole> {
+  const res = await apiFetch(`/api/roles/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+  return normalizeDoc(res.role);
+}
+
+export async function deleteDynamicRole(id: string): Promise<void> {
+  await apiFetch(`/api/roles/${id}`, { method: "DELETE" });
 }
 
 export async function removeProjectMember(projectId: string, userId: string): Promise<Project & { members?: UserProfile[] }> {
