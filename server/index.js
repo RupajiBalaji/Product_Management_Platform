@@ -1,4 +1,5 @@
 const path = require("path");
+const fs = require("fs");
 require("dotenv").config({ path: path.resolve(__dirname, "../.env") });
 require("dotenv").config({ path: path.resolve(__dirname, ".env") });
 require("dotenv").config();
@@ -124,8 +125,6 @@ app.get("/api/health", (req, res) => {
 });
 
 // Serve Static Frontend in Production (Render / Unified Deployment)
-const path = require("path");
-const fs = require("fs");
 const distPath = path.resolve(process.cwd(), "dist");
 
 console.log(`📁 [Static Files] Serving frontend from: ${distPath} (Exists: ${fs.existsSync(distPath)})`);
