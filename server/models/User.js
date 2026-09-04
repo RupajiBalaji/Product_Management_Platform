@@ -45,6 +45,12 @@ const userSchema = new mongoose.Schema(
       default: "active",
       index: true,
     },
+    // CONFIDENTIAL field. Must never be returned in any API response to non-product_lead roles.
+    hourly_cost_rate: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
     password_hash: {
       type: String,
       default: "",

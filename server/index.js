@@ -25,6 +25,7 @@ const submissionsRoutes = require("./routes/submissions");
 const appealsRoutes = require("./routes/appeals");
 const slippageRoutes = require("./routes/slippage");
 const actionsRoutes = require("./routes/actions");
+const portfolioRoutes = require("./routes/portfolio");
 const { startSlippageCron, runSlippageCheck } = require("./jobs/slippageChecker");
 const { startPriorityNudgeCron, runMiddayPriorityNudge } = require("./jobs/priorityNudge");
 const seedDatabase = require("./seed");
@@ -115,6 +116,7 @@ app.use("/api/submissions", submissionsRoutes);
 app.use("/api/appeals", appealsRoutes);
 app.use("/api/slippage", slippageRoutes);
 app.use("/api/actions", actionsRoutes);
+app.use("/api/portfolio", portfolioRoutes);
 
 // Internal runner endpoint for automated/manual slippage check
 app.post("/api/internal/run-slippage-check", async (req, res) => {

@@ -2,12 +2,15 @@ const express = require("express");
 const router = express.Router();
 const User = require("../models/User");
 const { Project, Task } = require("../models/models");
-const { verifyToken, requirePM } = require("../middleware/auth");
+const AuditLog = require("../models/AuditLog");
+const { verifyToken, requirePM, requireProductLead } = require("../middleware/auth");
 
 // Get workforce directory with cross-project workload analysis
 router.get("/employees", verifyToken, async (req, res) => {
   try {
     const employees = await User.find({ user_type: { $in: ["employee", "lead_architect"] } }).sort({ created_at: -1 }).lean();
+
+    const canViewCost = req.userType === "product_lead" || req.userType === "pm";
 
     // Enrich with projects assigned
     const enriched = await Promise.all(
@@ -15,13 +18,17 @@ router.get("/employees", verifyToken, async (req, res) => {
         const assignedProjects = await Project.find({ member_ids: emp._id }, "title status priority").lean();
         const activeTasksCount = await Task.countDocuments({ assignee_ids: emp._id, status: "active" });
 
-        return {
+        const empData = {
           ...emp,
           id: emp._id,
           assignedProjects,
           projectCount: assignedProjects.length,
           activeTasksCount,
         };
+        if (!canViewCost) {
+          delete empData.hourly_cost_rate;
+        }
+        return empData;
       })
     );
 
@@ -62,7 +69,12 @@ router.get("/me", verifyToken, async (req, res) => {
   try {
     const user = await User.findById(req.uid);
     if (!user) return res.status(404).json({ error: "User not found" });
-    res.json(user);
+    const userObj = user.toJSON();
+    const canViewCost = req.userType === "product_lead" || req.userType === "pm";
+    if (!canViewCost) {
+      delete userObj.hourly_cost_rate;
+    }
+    res.json(userObj);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -73,7 +85,12 @@ router.get("/:id", verifyToken, async (req, res) => {
   try {
     const user = await User.findById(req.params.id);
     if (!user) return res.status(404).json({ error: "User not found" });
-    res.json(user);
+    const userObj = user.toJSON();
+    const canViewCost = req.userType === "product_lead" || req.userType === "pm";
+    if (!canViewCost) {
+      delete userObj.hourly_cost_rate;
+    }
+    res.json(userObj);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -115,6 +132,54 @@ router.delete("/:id", verifyToken, requirePM, async (req, res) => {
     res.json({ success: true, message: "Employee removed from directory and all project allocations." });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── PATCH /api/users/:id/cost-rate (Product Lead only) ──────────────────────
+// Updates employee hourly compensation rate and records an immutable AuditLog
+router.patch("/:id/cost-rate", verifyToken, requireProductLead, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { hourly_cost_rate } = req.body;
+
+    if (hourly_cost_rate === undefined || hourly_cost_rate === null || isNaN(Number(hourly_cost_rate))) {
+      return res.status(400).json({
+        success: false,
+        error: "hourly_cost_rate must be a valid non-negative number",
+      });
+    }
+
+    const rateNum = Math.max(0, Number(hourly_cost_rate));
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({ success: false, error: "User not found" });
+    }
+
+    const previousRate = user.hourly_cost_rate || 0;
+    user.hourly_cost_rate = rateNum;
+    await user.save();
+
+    await AuditLog.record({
+      actorId: req.uid,
+      action: "COST_RATE_UPDATED",
+      entityType: "User",
+      entityId: String(user._id),
+      before: { hourly_cost_rate: previousRate },
+      after: { hourly_cost_rate: rateNum },
+    });
+
+    res.json({
+      success: true,
+      message: `Hourly cost rate updated to $${rateNum}/hr.`,
+      user: {
+        id: user._id,
+        email: user.email,
+        full_name: user.full_name,
+        hourly_cost_rate: user.hourly_cost_rate,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 

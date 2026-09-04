@@ -172,8 +172,26 @@ function evaluatePostpone() {
   };
 }
 
+/**
+ * Hook for CEO/Product Lead scope change consequence analysis (Phase 8)
+ * Quantifies time impact and compensation-cost delta.
+ */
+const { calculateCostDelta } = require("./costCalculator");
+
+function evaluateScopeChangeImpact(hoursDelta, hourlyRate = 0) {
+  const costImpact = calculateCostDelta(hoursDelta, hourlyRate);
+  return {
+    hoursDelta: costImpact.hoursDelta,
+    hourlyRate: costImpact.hourlyRate,
+    costDelta: costImpact.costDelta,
+    formattedImpact: costImpact.formatted,
+  };
+}
+
 module.exports = {
   evaluateReorder,
   evaluateSwapWithinWeek,
   evaluatePostpone,
+  calculateCostDelta,
+  evaluateScopeChangeImpact,
 };

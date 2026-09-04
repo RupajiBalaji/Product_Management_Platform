@@ -45,6 +45,7 @@ export interface UserProfile {
   dynamicRole?: DynamicRole | null;
   allocatedDailyHours?: number;
   defaultDailyCapHours?: number;
+  hourly_cost_rate?: number;
   assignedProjects?: Array<{ _id: string; title: string; status: string; priority: import("@/lib/constants").ProjectPriority }>;
   created_at: string;
 }
@@ -246,5 +247,101 @@ export interface ActionRequest {
   created_at?: string;
   updated_at?: string;
 }
+
+// ─── Phase 8: Portfolio & Cost Tracking Types ─────────────────────────────────
+
+export interface ProjectHealth {
+  health: import("@/lib/constants").ProjectHealthStatus;
+  reasons: string[];
+}
+
+export interface BudgetBurnSnapshot {
+  budgetedCost: number;
+  actualCostBurned: number;
+  remainingBudget: number;
+  projectedFinalCost: number;
+  burnPct: number;
+  status: import("@/lib/constants").ProjectHealthStatus;
+}
+
+export interface PortfolioPendingActions {
+  unresolvedSlippage: number;
+  pendingAppeals: number;
+  pendingClarifications: number;
+  total: number;
+}
+
+export interface PortfolioProject {
+  id: string;
+  _id?: string;
+  title: string;
+  description: string;
+  priority: import("@/lib/constants").ProjectPriority;
+  status: import("@/lib/constants").ProjectStatus;
+  totalTasks: number;
+  completedTasks: number;
+  pendingActions: PortfolioPendingActions;
+  health: ProjectHealth;
+  budget?: BudgetBurnSnapshot; // Only present for product_lead
+}
+
+export interface PortfolioSummary {
+  unresolvedSlippage: number;
+  pendingAppeals: number;
+  pendingClarifications: number;
+  totalPendingActions: number;
+  totalProjects: number;
+}
+
+export interface PortfolioDashboardResponse {
+  success: boolean;
+  summary: PortfolioSummary;
+  projects: PortfolioProject[];
+}
+
+export interface HeatmapProjectSegment {
+  projectId: string;
+  title: string;
+  dailyHours: number;
+  priority: import("@/lib/constants").ProjectPriority;
+}
+
+export interface UtilizationHeatmapItem {
+  userId: string;
+  name: string;
+  role_title: string;
+  projects: HeatmapProjectSegment[];
+  totalDailyHours: number;
+  dailyCap: number;
+  utilizationPct: number;
+  isOverAllocated: boolean;
+}
+
+export interface MemberBudgetBreakdown {
+  userId: string;
+  name: string;
+  role_title: string;
+  rate: number;
+  hoursLogged: number;
+  dailyHoursAllocated: number;
+  costBurned: number;
+}
+
+export interface ProjectBudgetDetail {
+  success: boolean;
+  projectId: string;
+  projectTitle: string;
+  budgetedCost: number;
+  actualCostBurned: number;
+  remainingBudget: number;
+  projectedFinalCost: number;
+  burnPct: number;
+  status: import("@/lib/constants").ProjectHealthStatus;
+  totalEstimatedHours: number;
+  totalHoursCompleted: number;
+  teamAllocations: Array<{ userId: string; totalHours: number; rate: number; cost: number }>;
+  memberBreakdown: MemberBudgetBreakdown[];
+}
+
 
 

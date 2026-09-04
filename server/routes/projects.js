@@ -6,6 +6,7 @@ const DynamicRole = require("../models/DynamicRole");
 const AuditLog = require("../models/AuditLog");
 const { verifyToken, requirePM, requireProductLead } = require("../middleware/auth");
 const { checkCapacityConflict, resolveConflictByPriority } = require("../lib/capacityRegistry");
+const { calculateProjectCost, calculateBudgetBurn } = require("../lib/costCalculator");
 
 // Get all projects with member counts
 router.get("/", verifyToken, async (req, res) => {
@@ -300,6 +301,118 @@ router.delete("/:id/members/:userId", verifyToken, requireProductLead, async (re
     res.json({ ...project.toObject(), members });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── GET /api/projects/:id/budget (Product Lead only) ────────────────────────
+router.get("/:id/budget", verifyToken, requireProductLead, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const proj = await Project.findById(id).lean();
+    if (!proj) {
+      return res.status(404).json({ success: false, error: "Project not found" });
+    }
+
+    const tasks = await Task.find({ project_id: id }).lean();
+    const taskIds = tasks.map((t) => t._id);
+
+    const totalEstimatedHours = tasks.reduce(
+      (sum, t) => sum + (Number(t.estimate_hours) || 0),
+      0
+    );
+    const totalHoursCompleted = tasks
+      .filter((t) => t.status === "completed")
+      .reduce((sum, t) => sum + (Number(t.estimate_hours) || 0), 0);
+
+    const dailyLogs =
+      taskIds.length > 0
+        ? await DailyLog.find({ task_id: { $in: taskIds } }).lean()
+        : [];
+
+    const actualHoursLoggedByUser = {};
+    dailyLogs.forEach((log) => {
+      const uId = String(log.user_id);
+      actualHoursLoggedByUser[uId] =
+        (actualHoursLoggedByUser[uId] || 0) + (Number(log.hours) || 0);
+    });
+
+    if (dailyLogs.length === 0) {
+      tasks.forEach((t) => {
+        const logged = Number(t.logged_hours) || 0;
+        if (logged > 0 && Array.isArray(t.assignee_ids)) {
+          const per = logged / (t.assignee_ids.length || 1);
+          t.assignee_ids.forEach((aId) => {
+            const uId = String(aId);
+            actualHoursLoggedByUser[uId] =
+              (actualHoursLoggedByUser[uId] || 0) + per;
+          });
+        }
+      });
+    }
+
+    const memberIds = (proj.member_ids || []).map(String);
+    const members =
+      memberIds.length > 0
+        ? await User.find({ _id: { $in: memberIds } }).lean()
+        : [];
+
+    const hourlyRates = {};
+    members.forEach((m) => {
+      hourlyRates[String(m._id)] = Number(m.hourly_cost_rate) || 0;
+    });
+
+    let budgetedCost = proj.budgeted_cost;
+    const initialCostEst = calculateProjectCost(proj.team_allocations, hourlyRates);
+    if (budgetedCost === null || budgetedCost === undefined) {
+      budgetedCost = initialCostEst.totalBudgetedCost;
+    }
+
+    const burn = calculateBudgetBurn(
+      budgetedCost,
+      actualHoursLoggedByUser,
+      hourlyRates,
+      1.0,
+      totalEstimatedHours,
+      totalHoursCompleted
+    );
+
+    const memberBreakdown = members.map((m) => {
+      const uId = String(m._id);
+      const rate = Number(m.hourly_cost_rate) || 0;
+      const hoursLogged = Math.round((actualHoursLoggedByUser[uId] || 0) * 10) / 10;
+      const cost = Math.round(hoursLogged * rate * 100) / 100;
+      const alloc = (proj.team_allocations || []).find(
+        (a) => String(a.user_id) === uId
+      );
+
+      return {
+        userId: uId,
+        name: m.full_name || m.email,
+        role_title: m.role_title,
+        rate,
+        hoursLogged,
+        dailyHoursAllocated: alloc?.daily_hours || 0,
+        costBurned: cost,
+      };
+    });
+
+    res.json({
+      success: true,
+      projectId: String(proj._id),
+      projectTitle: proj.title,
+      budgetedCost,
+      actualCostBurned: burn.actualCostBurned,
+      remainingBudget: burn.remainingBudget,
+      projectedFinalCost: burn.projectedFinalCost,
+      burnPct: burn.burnPct,
+      status: burn.status,
+      totalEstimatedHours,
+      totalHoursCompleted,
+      teamAllocations: initialCostEst.breakdown,
+      memberBreakdown,
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 

@@ -99,18 +99,32 @@ Traditional enterprise project management tools (Jira, Asana, Monday.com) are fr
 - **Mid-Day P0 Nudge Engine (`server/jobs/priorityNudge.js`)**: Scheduled daily at 12:00 PM to detect active P0 tasks with 0 logged activity for the day, dispatching urgent nudges to assigned contributors with built-in daily idempotency.
 - **Enhanced Daily Queue & Priority Badging**: Employee dashboard prioritizes work by P0 $\to$ P1 $\to$ P2 with reasoning tooltips, sub-task progress bars, and dedicated blocker filters.
 
-### 9. 📅 Interactive Calendar Matrix GUI
+### 9. 📊 Multi-Project Portfolio Dashboard & Budget/Cost Tracking (Phase 8)
+- **Executive Portfolio Dashboard (`/pm/portfolio`)**: Centralized command view for Product Leads and Lead Architects displaying all active initiatives with priority badges, composite health indicators, and pending action counts.
+- **Top-Line Action Counter**: Portfolio-wide aggregation tracking total unresolved 3-day slippages, pending Definition-of-Done appeals, and unaddressed PRD clarifications.
+- **Composite Project Health Engine (`server/lib/costCalculator.js`)**: Pure logic calculator synthesizing delivery risk into traffic-light indicators:
+  - **`green`**: No unresolved escalations, budget on track ($\le 105\%$).
+  - **`yellow`**: Warning-level slippages, budget warning (105%–115%), or tasks exceeding estimates by 50%+.
+  - **`red`**: Critical escalations or severe budget overrun ($> 115\%$).
+- **Confidential Compensation & Budget Projection**:
+  - `hourly_cost_rate` stored securely on users, strictly restricted from non-Product Lead roles (completely omitted from API responses, not just zeroed).
+  - Live budget burn extrapolation: `budgetedCost`, `actualCostBurned`, `remainingBudget`, `projectedFinalCost`, and `burnPct`.
+  - Dedicated Budget Burn panel on Project Detail view (`/pm/projects/$projectId`), visible exclusively to Product Leads.
+  - Dedicated confidential hourly rate editor on employee profile view (`/pm/employees/$employeeId`) with immutable `COST_RATE_UPDATED` audit trails.
+- **Global Resource Utilization Heatmap**: Stacked horizontal visualization comparing committed daily hours against employee capacity caps, with color-coded priority segments (P1 Red, P2 Amber, P3 Blue).
+- **Scope Change Consequence Analysis**: Pure logic calculator (`calculateCostDelta`) formatting scope impact into executive deltas (e.g. `"+45 hours × $120/hr = +$5,400"`).
 
+### 10. 📅 Interactive Calendar Matrix GUI
 - **Day-by-Day Contributor Matrix**: Interactive grid showing real-time contributor status (`Completed`, `In Progress`, `Blocked`, `No Log`).
 - **Instant Log Inspector Modal**: Click any log cell to inspect submitted deliverables, actual hours spent, blocker descriptions, and PR links.
 
-### 8. 👥 Employee 360 & Workload Capacity Engine
+### 11. 👥 Employee 360 & Workload Capacity Engine
 - **Capacity Gauge**: Visual circular gauge displaying real-time allocation percentage across all active projects.
 - **Multi-Project Team Allocation**: Add and remove contributors from projects with automatic role matching.
 - **High-Priority Project Guardrail**: Mark critical initiatives as **High Priority** so developers with multiple commitments know where to focus first.
 - **1-Click Dossier Export**: Generate and print clean executive performance dossiers.
 
-### 9. 🧠 5-Dimension AI Summary & Copilot Hub
+### 12. 🧠 5-Dimension AI Summary & Copilot Hub
 - **Single-Log & Multi-Log Summaries**: Synthesize daily standup entries into concise bulleted highlights.
 - **Project-Level & Sprint Velocity Insights**: Identify critical-path blockers and predict delivery variance.
 - **Employee 360 & Org-Wide Synthesis**: Executive health checks across engineering, design, and QA.
@@ -258,7 +272,14 @@ The repository is configured as a **Unified Web Service** on Render where Expres
 | `POST` | `/api/actions/request-clarification` | Request task requirements clarification & pause 3-day slippage clock |
 | `GET` | `/api/actions/clarifications/pending` | List open clarification requests awaiting Product Lead answer |
 | `POST` | `/api/actions/clarifications/:id/answer` | Answer clarification, unfreeze task slippage timer, record AuditLog |
-| `GET` | `/api/actions/history/:taskId` | Retrieve full action requests audit history for a task |
+| `POST` | `/api/tasks/:id/subtasks` | Create sub-task with optional acceptance criteria override |
+| `GET` | `/api/tasks/:id/subtasks` | List child sub-tasks with computed progress rollup |
+| `GET` | `/api/tasks/:id/progress` | Get granular task completion progress percentage |
+| `POST` | `/api/tasks/project/:id/recalculate-priorities` | Recalculate CPM longest-path slack & blocker priorities (P0/P1/P2) |
+| `GET` | `/api/portfolio/dashboard` | Executive portfolio view with health indicators & pending actions (budget for Product Lead) |
+| `GET` | `/api/portfolio/utilization-heatmap` | Global workforce utilization heatmap across all active projects |
+| `GET` | `/api/projects/:id/budget` | Full budget burn detail & velocity projection (Product Lead only) |
+| `PATCH` | `/api/users/:id/cost-rate` | Update employee hourly cost rate with immutable AuditLog (Product Lead only) |
 | `POST` | `/api/logs` | Submit daily work log with blocker status |
 | `GET` | `/api/analytics/matrix/:projectId` | Aggregate day-by-day contributor calendar grid |
 | `POST` | `/api/ai/summarize` | Generate multi-dimension executive synthesis |

@@ -18,9 +18,18 @@ import {
   FileText,
   Clock,
   ShieldAlert,
+  DollarSign,
+  Lock,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
-import { getUserProfile, getLogsByEmployee, getEmployeeProjects, getTasksByEmployee } from "@/lib/db";
+import { useAuth } from "@/context/AuthContext";
+import {
+  getUserProfile,
+  getLogsByEmployee,
+  getEmployeeProjects,
+  getTasksByEmployee,
+  updateUserCostRate,
+} from "@/lib/db";
 import { generateAISummary } from "@/lib/gemini";
 import type { UserProfile, Project, Task, DailyLog } from "@/lib/types";
 import { normalizePriority, PRIORITY_STYLES } from "@/lib/constants";
@@ -33,6 +42,10 @@ export const Route = createFileRoute("/pm/employees/$employeeId")({
 
 function EmployeeAnalyticsPage() {
   const { employeeId } = Route.useParams();
+  const { userProfile } = useAuth();
+  const isProductLead =
+    userProfile?.user_type === "product_lead" || userProfile?.user_type === "pm";
+
   const [emp, setEmp] = useState<UserProfile | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -44,6 +57,9 @@ function EmployeeAnalyticsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedProjectFilter, setSelectedProjectFilter] = useState("all");
 
+  const [costRateInput, setCostRateInput] = useState<string>("");
+  const [savingCostRate, setSavingCostRate] = useState(false);
+
   useEffect(() => {
     const load = async () => {
       const [profile, projs, tsks, lgLogs] = await Promise.all([
@@ -53,6 +69,9 @@ function EmployeeAnalyticsPage() {
         getLogsByEmployee(employeeId),
       ]);
       setEmp(profile);
+      if (profile && profile.hourly_cost_rate !== undefined) {
+        setCostRateInput(String(profile.hourly_cost_rate));
+      }
       setProjects(projs);
       setTasks(tsks);
       setLogs(lgLogs);
@@ -60,6 +79,26 @@ function EmployeeAnalyticsPage() {
     };
     load();
   }, [employeeId]);
+
+  const handleSaveCostRate = async () => {
+    const rateNum = Number(costRateInput);
+    if (isNaN(rateNum) || rateNum < 0) {
+      toast.error("Please enter a valid non-negative hourly cost rate");
+      return;
+    }
+    setSavingCostRate(true);
+    try {
+      const res = await updateUserCostRate(employeeId, rateNum);
+      if (res.success) {
+        setEmp((prev) => (prev ? { ...prev, hourly_cost_rate: rateNum } : null));
+        toast.success(`Updated hourly cost rate to $${rateNum}/hr (Confidential audit recorded).`);
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update cost rate");
+    } finally {
+      setSavingCostRate(false);
+    }
+  };
 
   const workedLogs = logs.filter((l) => l.has_worked);
   const noWorkLogs = logs.filter((l) => !l.has_worked);
@@ -236,6 +275,58 @@ Provide a structured, executive-grade evaluation formatted in clear markdown sec
           <Stat label="Projects Assigned" value={String(projects.length)} />
         </div>
       </div>
+
+      {/* Confidential Compensation Rate Editor (Product Lead Only) */}
+      {isProductLead && (
+        <div className="panel p-4 mb-6 border border-border bg-gradient-to-r from-surface to-surface-elevated flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xs">
+          <div className="flex items-center gap-3">
+            <div className="size-9 rounded-xl bg-emerald-500/15 flex items-center justify-center text-emerald-400 shrink-0">
+              <DollarSign className="size-4" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-sm text-foreground">
+                  Hourly Resource Cost Rate
+                </span>
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                  <Lock className="size-2.5" />
+                  Confidential · Product Lead Only
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Baseline rate used to compute project budget burn and resource allocation expenditures
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-mono">
+                $
+              </span>
+              <input
+                type="number"
+                min="0"
+                step="1"
+                value={costRateInput}
+                onChange={(e) => setCostRateInput(e.target.value)}
+                placeholder="0"
+                className="w-28 pl-7 pr-3 py-1.5 text-xs font-mono font-semibold rounded-lg bg-surface-elevated border border-border text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">
+                /hr
+              </span>
+            </div>
+            <button
+              onClick={handleSaveCostRate}
+              disabled={savingCostRate}
+              className="px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 cursor-pointer shadow-xs"
+            >
+              {savingCostRate ? "Saving..." : "Update Rate"}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex flex-wrap gap-1 mb-6 panel p-1">

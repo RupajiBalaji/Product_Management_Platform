@@ -311,4 +311,52 @@ export const TASK_PRIORITY_STYLES: Record<
   },
 };
 
+// ─── Project Health Constants (Phase 8 Multi-Project Portfolio Dashboard) ────
+export type ProjectHealthStatus = "green" | "yellow" | "red";
+
+export const HEALTH_STATUS_CONFIG: Record<
+  ProjectHealthStatus,
+  {
+    label: string;
+    badge: string;
+    trafficLight: string;
+    indicator: string;
+    border: string;
+    bg: string;
+    text: string;
+    icon: string;
+  }
+> = {
+  green: {
+    label: "On Track",
+    badge: "border-emerald-500/40 bg-emerald-500/15 text-emerald-400 font-semibold",
+    trafficLight: "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]",
+    indicator: "text-emerald-400",
+    border: "border-emerald-500/30",
+    bg: "bg-emerald-950/20",
+    text: "text-emerald-300",
+    icon: "🟢",
+  },
+  yellow: {
+    label: "At Risk",
+    badge: "border-amber-500/40 bg-amber-500/15 text-amber-300 font-semibold",
+    trafficLight: "bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.6)]",
+    indicator: "text-amber-400",
+    border: "border-amber-500/30",
+    bg: "bg-amber-950/20",
+    text: "text-amber-300",
+    icon: "🟡",
+  },
+  red: {
+    label: "Critical",
+    badge: "border-rose-500/50 bg-rose-500/20 text-rose-300 font-bold",
+    trafficLight: "bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.7)]",
+    indicator: "text-rose-400",
+    border: "border-rose-500/40",
+    bg: "bg-rose-950/20",
+    text: "text-rose-300",
+    icon: "🔴",
+  },
+};
+
 

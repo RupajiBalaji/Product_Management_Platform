@@ -17,6 +17,7 @@ import {
   Cpu,
   Gauge,
   ClipboardCheck,
+  TrendingUp,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { useAuth } from "@/context/AuthContext";
@@ -29,6 +30,7 @@ import { AICopilotSidebar } from "./AICopilotSidebar";
 
 const productLeadNav = [
   { to: "/pm/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { to: "/pm/portfolio", label: "Portfolio & Health", icon: TrendingUp },
   { to: "/pm/projects", label: "Projects & Tasks", icon: FolderKanban },
   { to: "/pm/reviews", label: "QA & Review Queue", icon: ClipboardCheck },
   { to: "/pm/capacity", label: "Capacity Registry", icon: Gauge },
@@ -39,6 +41,7 @@ const productLeadNav = [
 
 const leadArchitectNav = [
   { to: "/pm/dashboard", label: "Architecture & Projects", icon: LayoutDashboard },
+  { to: "/pm/portfolio", label: "Portfolio & Health", icon: TrendingUp },
   { to: "/pm/projects", label: "Projects & Tasks", icon: FolderKanban },
   { to: "/pm/reviews", label: "QA & Review Queue", icon: ClipboardCheck },
   { to: "/pm/capacity", label: "Capacity Registry", icon: Gauge },

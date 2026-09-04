@@ -852,5 +852,34 @@ export async function recalculateProjectPriorities(
   });
 }
 
+// ─── Phase 8: Portfolio Dashboard & Budget Tracking ───────────────────────────
+
+export async function getPortfolioDashboard(): Promise<import("@/lib/types").PortfolioDashboardResponse> {
+  return await apiFetch("/api/portfolio/dashboard");
+}
+
+export async function getPortfolioUtilizationHeatmap(): Promise<{
+  success: boolean;
+  heatmap: import("@/lib/types").UtilizationHeatmapItem[];
+}> {
+  return await apiFetch("/api/portfolio/utilization-heatmap");
+}
+
+export async function getProjectBudget(
+  projectId: string
+): Promise<import("@/lib/types").ProjectBudgetDetail> {
+  return await apiFetch(`/api/projects/${projectId}/budget`);
+}
+
+export async function updateUserCostRate(
+  userId: string,
+  hourlyCostRate: number
+): Promise<{ success: boolean; message: string; user: any }> {
+  return await apiFetch(`/api/users/${userId}/cost-rate`, {
+    method: "PATCH",
+    body: JSON.stringify({ hourly_cost_rate: hourlyCostRate }),
+  });
+}
+
 
 

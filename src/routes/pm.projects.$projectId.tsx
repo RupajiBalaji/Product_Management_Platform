@@ -24,10 +24,13 @@ import {
   AlertCircle,
   AlertTriangle,
   ShieldAlert,
+  DollarSign,
+  TrendingUp,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format, parseISO, differenceInDays } from "date-fns";
 import { AppShell } from "@/components/app-shell";
+import { useAuth } from "@/context/AuthContext";
 import {
   getProjectById,
   getTasksByProject,
@@ -42,10 +45,17 @@ import {
   removeProjectMember,
   updateProjectPriority,
   getProjectSlippageEvents,
+  getProjectBudget,
 } from "@/lib/db";
-import type { Project, Task, UserProfile, DynamicRole } from "@/lib/types";
-import type { ProjectPriority } from "@/lib/constants";
-import { PRIORITY_STYLES, PRIORITY_ORDER, normalizePriority, isElevatedPriority } from "@/lib/constants";
+import type { Project, Task, UserProfile, DynamicRole, ProjectBudgetDetail } from "@/lib/types";
+import type { ProjectPriority, ProjectHealthStatus } from "@/lib/constants";
+import {
+  PRIORITY_STYLES,
+  PRIORITY_ORDER,
+  normalizePriority,
+  isElevatedPriority,
+  HEALTH_STATUS_CONFIG,
+} from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/pm/projects/$projectId")({
@@ -54,11 +64,16 @@ export const Route = createFileRoute("/pm/projects/$projectId")({
 
 function ProjectDetailPage() {
   const { projectId } = Route.useParams();
+  const { userProfile } = useAuth();
+  const isProductLead =
+    userProfile?.user_type === "product_lead" || userProfile?.user_type === "pm";
+
   const [project, setProject] = useState<(Project & { members?: UserProfile[] }) | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [allEmployees, setAllEmployees] = useState<UserProfile[]>([]);
   const [roles, setRoles] = useState<DynamicRole[]>([]);
   const [slippageEvents, setSlippageEvents] = useState<any[]>([]);
+  const [budgetDetail, setBudgetDetail] = useState<ProjectBudgetDetail | null>(null);
   const [selectedRoleId, setSelectedRoleId] = useState<string>("");
   const [dailyHoursAllocated, setDailyHoursAllocated] = useState<number>(8);
   const [loading, setLoading] = useState(true);
@@ -89,6 +104,17 @@ function ProjectDetailPage() {
       setAllEmployees(emps);
       setRoles(dynamicRoles);
       setSlippageEvents(slpEvents);
+
+      if (isProductLead) {
+        try {
+          const b = await getProjectBudget(projectId);
+          if (b && b.success) {
+            setBudgetDetail(b);
+          }
+        } catch (bErr) {
+          console.warn("Could not load project budget detail:", bErr);
+        }
+      }
     } catch (err) {
       console.error("Error loading project details:", err);
     } finally {
@@ -424,6 +450,159 @@ function ProjectDetailPage() {
               </div>
             </div>
           </div>
+
+          {/* ─── Confidential Budget Burn Panel (Product Lead Only) ──────────────── */}
+          {isProductLead && budgetDetail && (
+            <div className="panel p-6 mb-6 border border-border bg-gradient-to-br from-surface to-surface-elevated shadow-xs space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="size-8 rounded-lg bg-emerald-500/15 flex items-center justify-center text-emerald-400">
+                    <DollarSign className="size-4" />
+                  </div>
+                  <div>
+                    <h3 className="font-display font-bold text-base text-foreground flex items-center gap-2">
+                      Project Financial & Budget Burn Projection
+                      <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                        Confidential · Product Lead Only
+                      </span>
+                    </h3>
+                    <p className="text-xs text-muted-foreground">
+                      Resource expenditure tracked against authorized project allocations
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span
+                    className={cn(
+                      "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border",
+                      HEALTH_STATUS_CONFIG[budgetDetail.status as ProjectHealthStatus]?.badge ||
+                        HEALTH_STATUS_CONFIG.green.badge
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "size-2 rounded-full",
+                        HEALTH_STATUS_CONFIG[budgetDetail.status as ProjectHealthStatus]?.trafficLight ||
+                          HEALTH_STATUS_CONFIG.green.trafficLight
+                      )}
+                    />
+                    {HEALTH_STATUS_CONFIG[budgetDetail.status as ProjectHealthStatus]?.label || "On Track"} ({budgetDetail.burnPct}% Burned)
+                  </span>
+                </div>
+              </div>
+
+              {/* 4 Key Financial Metrics */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 pt-2">
+                <div className="p-3 rounded-xl bg-surface-elevated/70 border border-border/60">
+                  <div className="text-[11px] text-muted-foreground font-medium">Authorized Budget</div>
+                  <div className="text-lg font-bold text-foreground mt-0.5">
+                    ${budgetDetail.budgetedCost.toLocaleString()}
+                  </div>
+                  <div className="text-[10px] text-muted-foreground mt-0.5">
+                    Based on approved allocations
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-xl bg-surface-elevated/70 border border-border/60">
+                  <div className="text-[11px] text-muted-foreground font-medium">Actual Cost Burned</div>
+                  <div className="text-lg font-bold text-foreground mt-0.5">
+                    ${budgetDetail.actualCostBurned.toLocaleString()}
+                  </div>
+                  <div className="text-[10px] text-muted-foreground mt-0.5">
+                    Hours logged to date
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-xl bg-surface-elevated/70 border border-border/60">
+                  <div className="text-[11px] text-muted-foreground font-medium">Remaining Budget</div>
+                  <div
+                    className={cn(
+                      "text-lg font-bold mt-0.5",
+                      budgetDetail.remainingBudget < 0 ? "text-rose-400" : "text-emerald-400"
+                    )}
+                  >
+                    ${budgetDetail.remainingBudget.toLocaleString()}
+                  </div>
+                  <div className="text-[10px] text-muted-foreground mt-0.5">
+                    {budgetDetail.remainingBudget < 0 ? "Over budget limit" : "Available balance"}
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-xl bg-surface-elevated/70 border border-border/60">
+                  <div className="text-[11px] text-muted-foreground font-medium">Projected Final Cost</div>
+                  <div className="text-lg font-bold text-foreground mt-0.5">
+                    ${budgetDetail.projectedFinalCost.toLocaleString()}
+                  </div>
+                  <div className="text-[10px] text-muted-foreground mt-0.5">
+                    Extrapolated completion cost
+                  </div>
+                </div>
+              </div>
+
+              {/* Progress Bar */}
+              <div className="space-y-1.5 pt-1">
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>Budget Utilization Rate</span>
+                  <span className="font-semibold text-foreground">{budgetDetail.burnPct}%</span>
+                </div>
+                <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
+                  <div
+                    className={cn(
+                      "h-full rounded-full transition-all duration-300",
+                      budgetDetail.status === "green"
+                        ? "bg-emerald-500"
+                        : budgetDetail.status === "yellow"
+                        ? "bg-amber-500"
+                        : "bg-rose-500"
+                    )}
+                    style={{ width: `${Math.min(100, budgetDetail.burnPct)}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Contributor Cost Breakdown Table */}
+              {budgetDetail.memberBreakdown && budgetDetail.memberBreakdown.length > 0 && (
+                <div className="pt-2">
+                  <div className="text-xs font-semibold text-foreground mb-2 flex items-center gap-1.5">
+                    <TrendingUp className="size-3.5 text-primary" />
+                    <span>Team Member Expenditure Breakdown</span>
+                  </div>
+                  <div className="overflow-x-auto rounded-lg border border-border/60">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-surface-elevated/80 border-b border-border/60 text-muted-foreground font-semibold text-[11px]">
+                        <tr>
+                          <th className="p-2.5">Member</th>
+                          <th className="p-2.5">Hourly Rate</th>
+                          <th className="p-2.5">Daily Allocation</th>
+                          <th className="p-2.5">Hours Logged</th>
+                          <th className="p-2.5 text-right">Cost Burned</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border/40 text-foreground">
+                        {budgetDetail.memberBreakdown.map((m) => (
+                          <tr key={m.userId} className="hover:bg-surface-elevated/40 transition-colors">
+                            <td className="p-2.5 font-medium">
+                              {m.name}
+                              <span className="text-[10px] text-muted-foreground ml-1.5 font-normal">
+                                ({m.role_title})
+                              </span>
+                            </td>
+                            <td className="p-2.5 font-mono text-muted-foreground">${m.rate}/hr</td>
+                            <td className="p-2.5 font-mono text-muted-foreground">{m.dailyHoursAllocated}h/d</td>
+                            <td className="p-2.5 font-mono">{m.hoursLogged} hrs</td>
+                            <td className="p-2.5 font-mono font-semibold text-right text-emerald-400">
+                              ${m.costBurned.toLocaleString()}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Tasks Section */}
           <div className="flex flex-wrap items-center justify-between gap-3 mb-4">

@@ -26,6 +26,10 @@ const projectSchema = new mongoose.Schema(
         allocated_at: { type: Date, default: Date.now },
       },
     ],
+    budgeted_cost: {
+      type: Number,
+      default: null,
+    },
   },
   { timestamps: { createdAt: "created_at", updatedAt: "updated_at" } }
 );
