@@ -129,17 +129,38 @@ Traditional enterprise project management tools (Jira, Asana, Monday.com) are fr
   - Dedicated "Active SME Consultations" card on Developer Dashboard (`/employee/dashboard`) displaying active consultation requests with one-click direct links to join the deliberation.
   - Interactive Creation Deliberation GUI on Project Detail view (`/pm/projects/$projectId`) with role-badged message streams, live SME chips, and SME invite modal.
 
-### 11. 📅 Interactive Calendar Matrix GUI
+### 11. 💬 Employee-to-Employee Project Collaboration Chat & Direct Messaging (Phase 10)
+- **Team Collaboration Channel (`server/models/TeamChannel.js`)**:
+  - One auto-created channel per project upon launch or creation.
+  - Multi-threaded discussion model (`threads: [{ topic, created_by, messages, linked_task_id, flagged_for_review, ... }]`).
+- **Visibility-Scoped Access Control (`server/lib/chatVisibility.js`)**:
+  - Pure zero-DB logic engine enforcing role-based data tiers:
+    - **General Threads** (no `linked_task_id`): Any project member can view and contribute.
+    - **`full` Visibility Tier**: Full access across all threads (automatic for Product Leads and Lead Architects).
+    - **`own_data_only` Visibility Tier**: Restricted exclusively to threads linked to tasks directly assigned to the employee.
+    - **`own_plus_dependency` Visibility Tier**: Access granted to assigned tasks plus immediate prerequisite/dependent tasks in the DAG.
+- **PM Agent Passive Monitoring Engine (`server/lib/threadMonitor.js` & `server/jobs/threadMonitor.js`)**:
+  - **Task Reference & Blocker Detection**: Automatically analyzes thread content for mentions of scheduled project tasks and dependency phrases (e.g., `"blocked on"`, `"waiting for"`).
+  - **Unresolved Disagreement Detection**: AI-assisted background monitor detecting stalled debates ($\ge 24$ hours without consensus), automatically flagging threads with a structured dispute reason and suggested resolution.
+  - Periodic cron runner (`initThreadMonitorCron`) dispatches high-priority `unresolved_disagreement` notifications to the Product Lead and logs an immutable `AuditLog` entry.
+- **1-on-1 Project-Scoped Direct Messaging (`server/models/DirectMessage.js`)**:
+  - Encrypted, strictly project-scoped direct messaging between allocated team members.
+  - Indexed by `{ project_id, participant_ids }` (sorted for deterministic lookups).
+  - Built-in read receipts (`read_at`), active peer status, and 1-click DM launch directly from project member chips.
+- **Permanent Archival Guarantee**:
+  - Zero `DELETE` endpoints exist for channels, threads, or messages, strictly preserving full institutional discussion history for post-mortems and audits.
+
+### 12. 📅 Interactive Calendar Matrix GUI
 - **Day-by-Day Contributor Matrix**: Interactive grid showing real-time contributor status (`Completed`, `In Progress`, `Blocked`, `No Log`).
 - **Instant Log Inspector Modal**: Click any log cell to inspect submitted deliverables, actual hours spent, blocker descriptions, and PR links.
 
-### 11. 👥 Employee 360 & Workload Capacity Engine
+### 13. 👥 Employee 360 & Workload Capacity Engine
 - **Capacity Gauge**: Visual circular gauge displaying real-time allocation percentage across all active projects.
 - **Multi-Project Team Allocation**: Add and remove contributors from projects with automatic role matching.
 - **High-Priority Project Guardrail**: Mark critical initiatives as **High Priority** so developers with multiple commitments know where to focus first.
 - **1-Click Dossier Export**: Generate and print clean executive performance dossiers.
 
-### 12. 🧠 5-Dimension AI Summary & Copilot Hub
+### 14. 🧠 5-Dimension AI Summary & Copilot Hub
 - **Single-Log & Multi-Log Summaries**: Synthesize daily standup entries into concise bulleted highlights.
 - **Project-Level & Sprint Velocity Insights**: Identify critical-path blockers and predict delivery variance.
 - **Employee 360 & Org-Wide Synthesis**: Executive health checks across engineering, design, and QA.
@@ -163,6 +184,7 @@ autonomous-project-pilot/
 │   │   ├── logs.js                 # Daily work logs & blocker tracking
 │   │   ├── users.js                # Employee directory & capacity calculation
 │   │   ├── analytics.js            # KPI metrics & matrix data aggregation
+│   │   ├── collaboration.js        # Project team channel, threads & 1-on-1 DMs
 │   │   └── ai.js                   # Google Gemini 3.5 Flash-Lite AI Hub & Copilot
 │   └── seed.js                     # Demo dataset seeder
 ├── src/                            # Vite + React 19 Frontend

@@ -388,3 +388,69 @@ export interface SMEInvitationItem {
   invitedAt: string;
   status: "active" | "finalized";
 }
+
+// ─── Phase 10: Team Channel & Direct Messaging Types ─────────────────────────
+
+export interface ChannelMessage {
+  id: string;
+  _id?: string;
+  author_id: string;
+  author_name: string;
+  author_role_title?: string;
+  author_photo_url?: string;
+  content: string;
+  created_at: string;
+}
+
+export interface ChannelThread {
+  id: string;
+  _id?: string;
+  topic: string;
+  created_by: string;
+  creator_name?: string;
+  creator_role_title?: string;
+  creator_photo_url?: string;
+  linked_task_id?: string | null;
+  linked_task_title?: string | null;
+  flagged_for_review?: boolean;
+  flagged_reason?: string | null;
+  suggested_resolution?: string | null;
+  created_at: string;
+  messages: ChannelMessage[];
+}
+
+export interface TeamChannel {
+  id: string;
+  _id?: string;
+  project_id: string;
+  project_title?: string;
+  visibility_tier?: string;
+  threads: ChannelThread[];
+}
+
+export interface DirectMessageItem {
+  id: string;
+  _id?: string;
+  author_id: string;
+  author_name?: string;
+  author_role_title?: string;
+  author_photo_url?: string;
+  content: string;
+  created_at: string;
+  read_at?: string | null;
+}
+
+export interface DirectMessage {
+  id: string;
+  _id?: string;
+  project_id: string;
+  project_title?: string;
+  participant_ids: string[];
+  other_user: {
+    id: string;
+    full_name: string;
+    role_title?: string;
+    photo_url?: string;
+  };
+  messages: DirectMessageItem[];
+}

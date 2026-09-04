@@ -27,8 +27,10 @@ const slippageRoutes = require("./routes/slippage");
 const actionsRoutes = require("./routes/actions");
 const portfolioRoutes = require("./routes/portfolio");
 const creationThreadRoutes = require("./routes/creationThread");
+const { router: collaborationRoutes } = require("./routes/collaboration");
 const { startSlippageCron, runSlippageCheck } = require("./jobs/slippageChecker");
 const { startPriorityNudgeCron, runMiddayPriorityNudge } = require("./jobs/priorityNudge");
+const { initThreadMonitorCron, runThreadDisagreementMonitor } = require("./jobs/threadMonitor");
 const seedDatabase = require("./seed");
 const { verifyToken, requirePM } = require("./middleware/auth");
 
@@ -119,6 +121,7 @@ app.use("/api/slippage", slippageRoutes);
 app.use("/api/actions", actionsRoutes);
 app.use("/api/portfolio", portfolioRoutes);
 app.use("/api", creationThreadRoutes);
+app.use("/api", collaborationRoutes);
 
 // Internal runner endpoint for automated/manual slippage check
 app.post("/api/internal/run-slippage-check", async (req, res) => {
@@ -155,6 +158,27 @@ app.post("/api/internal/run-priority-nudge", async (req, res) => {
 
     const { date } = req.body || {};
     const results = await runMiddayPriorityNudge(date);
+    return res.json({ success: true, results });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Internal runner endpoint for passive PM thread disagreement monitor
+app.post("/api/internal/run-thread-monitor", async (req, res) => {
+  try {
+    const secretHeader = req.headers["x-internal-secret"];
+    const expectedSecret = process.env.INTERNAL_SECRET || "autonomous-pm-internal-secret";
+
+    if (secretHeader !== expectedSecret) {
+      return res.status(403).json({
+        success: false,
+        error: "Unauthorized: Invalid or missing x-internal-secret header",
+      });
+    }
+
+    const { hoursThreshold = 24 } = req.body || {};
+    const results = await runThreadDisagreementMonitor(hoursThreshold);
     return res.json({ success: true, results });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message });
@@ -258,6 +282,8 @@ if (require.main === module) {
     startSlippageCron();
     // Initialize automated midday P0 priority nudge cron job
     startPriorityNudgeCron();
+    // Initialize automated passive PM thread disagreement monitor cron job
+    initThreadMonitorCron();
   });
 }
 

@@ -937,3 +937,60 @@ export async function getMySMEInvitations(): Promise<{
     return { success: true, invitations: [] };
   }
 }
+
+// ─── Phase 10: Collaboration Channel & Direct Messaging API ──────────────────
+
+export async function getProjectTeamChannel(
+  projectId: string
+): Promise<{ success: boolean; channel: import("@/lib/types").TeamChannel }> {
+  return await apiFetch(`/api/projects/${projectId}/channel`);
+}
+
+export async function createChannelThread(
+  projectId: string,
+  topic: string,
+  linkedTaskId?: string,
+  initialMessage?: string
+): Promise<{ success: boolean; thread: import("@/lib/types").ChannelThread }> {
+  return await apiFetch(`/api/projects/${projectId}/channel/threads`, {
+    method: "POST",
+    body: JSON.stringify({
+      topic,
+      linked_task_id: linkedTaskId || null,
+      initial_message: initialMessage || "",
+    }),
+  });
+}
+
+export async function postChannelMessage(
+  projectId: string,
+  threadId: string,
+  content: string
+): Promise<{
+  success: boolean;
+  message: import("@/lib/types").ChannelMessage;
+  dependencyDetection?: { referencesTask: boolean; matchedTaskTitles: string[]; matchedKeywords: string[] };
+}> {
+  return await apiFetch(`/api/projects/${projectId}/channel/threads/${threadId}/messages`, {
+    method: "POST",
+    body: JSON.stringify({ content }),
+  });
+}
+
+export async function getProjectDirectMessage(
+  projectId: string,
+  otherUserId: string
+): Promise<{ success: boolean; dm: import("@/lib/types").DirectMessage }> {
+  return await apiFetch(`/api/projects/${projectId}/dm/${otherUserId}`);
+}
+
+export async function postProjectDirectMessage(
+  projectId: string,
+  otherUserId: string,
+  content: string
+): Promise<{ success: boolean; message: import("@/lib/types").DirectMessageItem }> {
+  return await apiFetch(`/api/projects/${projectId}/dm/${otherUserId}/messages`, {
+    method: "POST",
+    body: JSON.stringify({ content }),
+  });
+}

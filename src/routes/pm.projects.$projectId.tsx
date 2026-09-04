@@ -30,6 +30,11 @@ import {
   Send,
   Lock,
   UserCheck,
+  MessageCircle,
+  Hash,
+  AtSign,
+  Eye,
+  AlertOctagon,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format, parseISO, differenceInDays } from "date-fns";
@@ -55,6 +60,11 @@ import {
   inviteSMEExpert,
   revokeSMEExpert,
   finalizeCreationThread,
+  getProjectTeamChannel,
+  createChannelThread,
+  postChannelMessage,
+  getProjectDirectMessage,
+  postProjectDirectMessage,
 } from "@/lib/db";
 import type {
   Project,
@@ -65,6 +75,11 @@ import type {
   CreationThread,
   CreationThreadMessage,
   InvitedExpert,
+  TeamChannel,
+  ChannelThread,
+  ChannelMessage,
+  DirectMessage,
+  DirectMessageItem,
 } from "@/lib/types";
 import type { ProjectPriority, ProjectHealthStatus } from "@/lib/constants";
 import {
@@ -117,6 +132,24 @@ function ProjectDetailPage() {
   const [revokingSmeId, setRevokingSmeId] = useState<string | null>(null);
   const [finalizingThread, setFinalizingThread] = useState(false);
 
+  // Phase 10: Team Channel & Direct Messaging State
+  const [teamChannel, setTeamChannel] = useState<TeamChannel | null>(null);
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
+  const [showNewThreadModal, setShowNewThreadModal] = useState(false);
+  const [newThreadTopic, setNewThreadTopic] = useState("");
+  const [newThreadLinkedTaskId, setNewThreadLinkedTaskId] = useState("");
+  const [newThreadInitialMsg, setNewThreadInitialMsg] = useState("");
+  const [creatingThread, setCreatingThread] = useState(false);
+  const [threadReplyInput, setThreadReplyInput] = useState("");
+  const [sendingThreadReply, setSendingThreadReply] = useState(false);
+
+  // 1-on-1 Direct Messaging Modal State
+  const [activeDmUser, setActiveDmUser] = useState<UserProfile | null>(null);
+  const [activeDm, setActiveDm] = useState<DirectMessage | null>(null);
+  const [dmInput, setDmInput] = useState("");
+  const [sendingDm, setSendingDm] = useState(false);
+  const [loadingDm, setLoadingDm] = useState(false);
+
   const loadThread = async () => {
     try {
       const tRes = await getCreationThread(projectId);
@@ -125,6 +158,20 @@ function ProjectDetailPage() {
       }
     } catch {
       setCreationThread(null);
+    }
+  };
+
+  const loadChannel = async () => {
+    try {
+      const cRes = await getProjectTeamChannel(projectId);
+      if (cRes && cRes.success) {
+        setTeamChannel(cRes.channel);
+        if (!activeThreadId && cRes.channel.threads?.length > 0) {
+          setActiveThreadId(cRes.channel.threads[0].id || cRes.channel.threads[0]._id || null);
+        }
+      }
+    } catch (err) {
+      console.warn("Team channel not accessible:", err);
     }
   };
 
@@ -155,11 +202,95 @@ function ProjectDetailPage() {
         }
       }
 
-      await loadThread();
+      await Promise.all([loadThread(), loadChannel()]);
     } catch (err) {
       console.error("Error loading project details:", err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleCreateThread = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!newThreadTopic.trim() || creatingThread) return;
+    setCreatingThread(true);
+    try {
+      const res = await createChannelThread(
+        projectId,
+        newThreadTopic.trim(),
+        newThreadLinkedTaskId || undefined,
+        newThreadInitialMsg.trim() || undefined
+      );
+      if (res && res.success) {
+        toast.success(`Thread "${newThreadTopic}" created`);
+        setNewThreadTopic("");
+        setNewThreadLinkedTaskId("");
+        setNewThreadInitialMsg("");
+        setShowNewThreadModal(false);
+        await loadChannel();
+        if (res.thread?.id || res.thread?._id) {
+          setActiveThreadId(res.thread.id || res.thread._id || null);
+        }
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to create thread");
+    } finally {
+      setCreatingThread(false);
+    }
+  };
+
+  const handlePostChannelReply = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!threadReplyInput.trim() || !activeThreadId || sendingThreadReply) return;
+    setSendingThreadReply(true);
+    try {
+      const res = await postChannelMessage(projectId, activeThreadId, threadReplyInput.trim());
+      if (res && res.success) {
+        setThreadReplyInput("");
+        await loadChannel();
+        if (res.dependencyDetection?.referencesTask && res.dependencyDetection.matchedTaskTitles?.length > 0) {
+          toast.info(`Task reference detected: ${res.dependencyDetection.matchedTaskTitles.join(", ")}`);
+        }
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to post reply");
+    } finally {
+      setSendingThreadReply(false);
+    }
+  };
+
+  const handleOpenDm = async (member: UserProfile) => {
+    setActiveDmUser(member);
+    setLoadingDm(true);
+    try {
+      const res = await getProjectDirectMessage(projectId, member.id);
+      if (res && res.success) {
+        setActiveDm(res.dm);
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to load direct messages");
+    } finally {
+      setLoadingDm(false);
+    }
+  };
+
+  const handleSendDm = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!dmInput.trim() || !activeDmUser || sendingDm) return;
+    setSendingDm(true);
+    try {
+      const res = await postProjectDirectMessage(projectId, activeDmUser.id, dmInput.trim());
+      if (res && res.success) {
+        setDmInput("");
+        const dmRes = await getProjectDirectMessage(projectId, activeDmUser.id);
+        if (dmRes && dmRes.success) {
+          setActiveDm(dmRes.dm);
+        }
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to send direct message");
+    } finally {
+      setSendingDm(false);
     }
   };
 
@@ -369,6 +500,10 @@ function ProjectDetailPage() {
   const currentPriority = normalizePriority(project?.priority);
   const prioMeta = PRIORITY_STYLES[currentPriority];
 
+  const activeThread =
+    teamChannel?.threads.find((t) => (t.id || t._id) === activeThreadId) ||
+    (teamChannel?.threads && teamChannel.threads.length > 0 ? teamChannel.threads[0] : null);
+
   return (
     <AppShell
       eyebrow={`Project Manager Control · Status: ${project?.status || "active"}`}
@@ -521,6 +656,15 @@ function ProjectDetailPage() {
                             <span className="text-[9px] text-muted-foreground font-mono bg-card px-1.5 py-0.5 rounded-md border border-border/50">
                               {e.allocatedDailyHours}h/d
                             </span>
+                          )}
+                          {e.id !== userProfile?.id && (
+                            <button
+                              onClick={() => handleOpenDm(e)}
+                              className="size-5 rounded-md flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors ml-0.5 cursor-pointer"
+                              title={`Direct message ${e.full_name}`}
+                            >
+                              <MessageCircle className="size-3" />
+                            </button>
                           )}
                           {(() => {
                             const streak = getEmployeeStreakEvent(e.id);
@@ -901,6 +1045,221 @@ function ProjectDetailPage() {
               )}
             </div>
           )}
+
+          {/* Team Collaboration Channel (Phase 10) */}
+          <div className="panel p-6 mb-8 border-border bg-card/80">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-5 border-b border-border pb-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <div className="size-8 rounded-lg bg-primary/15 flex items-center justify-center text-primary">
+                    <MessageSquare className="size-4" />
+                  </div>
+                  <div>
+                    <h2 className="font-display text-base font-bold text-foreground">
+                      Team Collaboration Channel
+                    </h2>
+                    <p className="text-eyebrow text-[10px]">
+                      Project-scoped discussions & task-linked threads with passive PM monitoring
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowNewThreadModal(true)}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3.5 py-1.5 text-xs font-bold text-primary-foreground hover:bg-primary/90 transition-colors cursor-pointer shadow-glow"
+                >
+                  <Plus className="size-3.5" /> Start Thread
+                </button>
+              </div>
+            </div>
+
+            {!teamChannel || teamChannel.threads.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-border/80 p-8 text-center bg-muted/10">
+                <MessageSquare className="size-8 text-muted-foreground/40 mx-auto mb-2" />
+                <p className="font-semibold text-xs text-foreground">No collaboration threads yet</p>
+                <p className="text-[11px] text-muted-foreground mt-1 max-w-sm mx-auto">
+                  Start a team discussion or link a thread to a specific task to coordinate with assigned developers and track blockers.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setShowNewThreadModal(true)}
+                  className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted cursor-pointer"
+                >
+                  <Plus className="size-3.5 text-primary" /> Create First Thread
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+                {/* Threads Sidebar */}
+                <div className="lg:col-span-4 space-y-2 max-h-[460px] overflow-y-auto pr-1">
+                  <div className="text-[11px] font-semibold text-muted-foreground px-1 pb-1">
+                    Threads ({teamChannel.threads.length})
+                  </div>
+                  {teamChannel.threads.map((th) => {
+                    const tid = th.id || th._id;
+                    const isSelected = tid === (activeThread?.id || activeThread?._id);
+                    const thLinkedTask = th.linked_task_id
+                      ? tasks.find((t) => (t.id || t._id) === th.linked_task_id)
+                      : null;
+                    return (
+                      <button
+                        key={tid}
+                        type="button"
+                        onClick={() => setActiveThreadId(tid || null)}
+                        className={cn(
+                          "w-full text-left p-3 rounded-xl border transition-all cursor-pointer flex flex-col gap-1.5",
+                          isSelected
+                            ? "border-primary bg-primary/10 shadow-xs ring-1 ring-primary/30"
+                            : "border-border/60 bg-card/60 hover:bg-card hover:border-border"
+                        )}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-semibold text-xs text-foreground truncate">{th.topic}</span>
+                          {th.flagged_for_review && (
+                            <span
+                              className="shrink-0 size-2.5 rounded-full bg-amber-400 animate-pulse"
+                              title="PM Agent: Unresolved Disagreement Flagged"
+                            />
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                          <span>{th.messages?.length || 0} msgs</span>
+                          <span>·</span>
+                          <span>
+                            {th.created_at
+                              ? format(parseISO(th.created_at), "MMM d, h:mm a")
+                              : "Recently"}
+                          </span>
+                        </div>
+                        {thLinkedTask && (
+                          <div className="flex items-center gap-1 text-[10px] text-primary truncate max-w-[220px]">
+                            <Network className="size-2.5 shrink-0" />
+                            <span className="truncate">{thLinkedTask.title}</span>
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Active Thread Detail & Messages */}
+                <div className="lg:col-span-8 flex flex-col min-h-[460px] panel p-4 bg-card/40 border-border/70 space-y-3.5">
+                  {activeThread ? (
+                    <>
+                      {/* Active Thread Header */}
+                      <div className="border-b border-border pb-3 flex flex-wrap items-center justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <h3 className="font-display font-bold text-sm text-foreground truncate">
+                            {activeThread.topic}
+                          </h3>
+                          <p className="text-[10px] text-muted-foreground">
+                            Started by{" "}
+                            <span className="font-semibold text-foreground">
+                              {allEmployees.find((e) => e.id === activeThread.created_by)?.full_name ||
+                                activeThread.created_by}
+                            </span>
+                          </p>
+                        </div>
+
+                        {activeThread.linked_task_id && (
+                          <span className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                            <Network className="size-3" />
+                            <span>
+                              {tasks.find((t) => (t.id || t._id) === activeThread.linked_task_id)?.title ||
+                                "Linked Task"}
+                            </span>
+                          </span>
+                        )}
+                      </div>
+
+                      {/* PM Passive Monitoring Disagreement Banner */}
+                      {activeThread.flagged_for_review && (
+                        <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3.5 space-y-1.5">
+                          <div className="flex items-center gap-2 text-amber-300 text-xs font-bold">
+                            <AlertTriangle className="size-4 shrink-0 text-amber-400" />
+                            <span>PM Agent Flagged: Unresolved Disagreement (&gt;24h)</span>
+                          </div>
+                          {activeThread.flagged_reason && (
+                            <p className="text-[11px] text-amber-200/90 leading-relaxed font-mono">
+                              <strong>Reason:</strong> {activeThread.flagged_reason}
+                            </p>
+                          )}
+                          {activeThread.suggested_resolution && (
+                            <div className="text-xs text-amber-100/90 bg-amber-500/15 rounded-lg p-2.5 mt-1 border border-amber-500/20">
+                              <strong className="text-amber-300">Suggested Resolution:</strong>{" "}
+                              {activeThread.suggested_resolution}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Messages Stream */}
+                      <div className="flex-1 space-y-3 max-h-[320px] overflow-y-auto p-3 rounded-xl bg-background/50 border border-border/50">
+                        {!activeThread.messages || activeThread.messages.length === 0 ? (
+                          <p className="text-xs text-muted-foreground italic py-8 text-center">
+                            No messages in this thread yet. Post the first message below.
+                          </p>
+                        ) : (
+                          activeThread.messages.map((m, idx) => {
+                            const authorEmp = allEmployees.find((e) => e.id === m.author_id);
+                            const isMe = userProfile?.id === m.author_id;
+                            return (
+                              <div key={idx} className="flex items-start gap-2.5">
+                                <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary/20 text-[10px] font-bold text-primary uppercase">
+                                  {(authorEmp?.full_name || m.author_id).slice(0, 2)}
+                                </span>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-baseline gap-2">
+                                    <span className="text-xs font-semibold text-foreground truncate">
+                                      {authorEmp?.full_name || m.author_id}
+                                      {isMe && <span className="ml-1 text-[9px] text-primary font-normal">(You)</span>}
+                                    </span>
+                                    <span className="text-[10px] text-muted-foreground font-mono">
+                                      {m.created_at ? format(parseISO(m.created_at), "h:mm a · MMM d") : ""}
+                                    </span>
+                                  </div>
+                                  <p className="text-xs text-muted-foreground mt-0.5 whitespace-pre-wrap leading-relaxed">
+                                    {m.content}
+                                  </p>
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+
+                      {/* Thread Reply Composer */}
+                      <form onSubmit={handlePostChannelReply} className="flex gap-2 pt-1">
+                        <input
+                          type="text"
+                          value={threadReplyInput}
+                          onChange={(e) => setThreadReplyInput(e.target.value)}
+                          placeholder="Reply to thread (dependency phrases like 'blocked on...' are monitored by PM)..."
+                          disabled={sendingThreadReply}
+                          className="flex-1 rounded-xl border border-border bg-card px-3.5 py-2 text-xs text-foreground placeholder:text-muted-foreground outline-none focus:border-primary transition-colors"
+                        />
+                        <button
+                          type="submit"
+                          disabled={sendingThreadReply || !threadReplyInput.trim()}
+                          className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-xs font-bold text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 cursor-pointer shadow-xs"
+                        >
+                          {sendingThreadReply ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
+                          <span>Reply</span>
+                        </button>
+                      </form>
+                    </>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-16 text-center text-muted-foreground">
+                      <MessageSquare className="size-8 text-muted-foreground/30 mb-2" />
+                      <p className="text-xs font-semibold">Select a thread to view discussion</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Tasks Section */}
           <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
@@ -1417,6 +1776,46 @@ function ProjectDetailPage() {
             setSelectedSmeUserId("");
           }}
           onSubmit={handleInviteSme}
+        />
+      )}
+
+      {/* New Thread Modal (Phase 10) */}
+      {showNewThreadModal && (
+        <NewThreadModal
+          tasks={tasks}
+          topic={newThreadTopic}
+          linkedTaskId={newThreadLinkedTaskId}
+          initialMsg={newThreadInitialMsg}
+          loading={creatingThread}
+          onChangeTopic={setNewThreadTopic}
+          onChangeLinkedTask={setNewThreadLinkedTaskId}
+          onChangeInitialMsg={setNewThreadInitialMsg}
+          onClose={() => {
+            setShowNewThreadModal(false);
+            setNewThreadTopic("");
+            setNewThreadLinkedTaskId("");
+            setNewThreadInitialMsg("");
+          }}
+          onSubmit={handleCreateThread}
+        />
+      )}
+
+      {/* Direct Message Modal (Phase 10) */}
+      {activeDmUser && (
+        <DirectMessageModal
+          targetUser={activeDmUser}
+          currentUserId={userProfile?.id}
+          directMessage={activeDm}
+          input={dmInput}
+          loading={loadingDm}
+          sending={sendingDm}
+          onChangeInput={setDmInput}
+          onClose={() => {
+            setActiveDmUser(null);
+            setActiveDm(null);
+            setDmInput("");
+          }}
+          onSubmit={handleSendDm}
         />
       )}
     </AppShell>
@@ -2067,3 +2466,231 @@ function DAGTopologyModal({
     </div>
   );
 }
+
+function NewThreadModal({
+  tasks,
+  topic,
+  linkedTaskId,
+  initialMsg,
+  loading,
+  onChangeTopic,
+  onChangeLinkedTask,
+  onChangeInitialMsg,
+  onClose,
+  onSubmit,
+}: {
+  tasks: Task[];
+  topic: string;
+  linkedTaskId: string;
+  initialMsg: string;
+  loading: boolean;
+  onChangeTopic: (v: string) => void;
+  onChangeLinkedTask: (v: string) => void;
+  onChangeInitialMsg: (v: string) => void;
+  onClose: () => void;
+  onSubmit: (e: React.FormEvent) => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
+      <div className="panel w-full max-w-md p-6 shadow-2xl space-y-4">
+        <div className="flex items-center justify-between border-b border-border pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="size-8 rounded-lg bg-primary/15 flex items-center justify-center text-primary">
+              <MessageSquare className="size-4" />
+            </div>
+            <div>
+              <h3 className="font-display font-bold text-base text-foreground">Start Collaboration Thread</h3>
+              <p className="text-[11px] text-muted-foreground">General project discussion or task-linked thread</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="rounded-lg p-1 text-muted-foreground hover:bg-muted cursor-pointer">
+            <X className="size-4" />
+          </button>
+        </div>
+
+        <form onSubmit={onSubmit} className="space-y-3.5">
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-semibold text-foreground">Topic / Discussion Subject *</label>
+            <input
+              type="text"
+              required
+              value={topic}
+              onChange={(e) => onChangeTopic(e.target.value)}
+              placeholder="e.g. Database schema migration strategy"
+              className="w-full rounded-xl border border-border bg-card px-3 py-2 text-xs text-foreground outline-none focus:border-primary"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-semibold text-foreground">Linked Task (Optional)</label>
+            <select
+              value={linkedTaskId}
+              onChange={(e) => onChangeLinkedTask(e.target.value)}
+              className="w-full rounded-xl border border-border bg-card px-3 py-2 text-xs text-foreground outline-none focus:border-primary"
+            >
+              <option value="">-- General Team Thread (No Task) --</option>
+              {tasks.map((t) => (
+                <option key={t.id || t._id} value={t.id || t._id}>
+                  {t.title} ({t.status})
+                </option>
+              ))}
+            </select>
+            <p className="text-[10px] text-muted-foreground">
+              If linked to a task, thread visibility is scoped based on employee role tiers and task dependencies.
+            </p>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-semibold text-foreground">Initial Message (Optional)</label>
+            <textarea
+              rows={3}
+              value={initialMsg}
+              onChange={(e) => onChangeInitialMsg(e.target.value)}
+              placeholder="Provide context, question, or architectural proposal..."
+              className="w-full rounded-xl border border-border bg-card p-3 text-xs text-foreground outline-none focus:border-primary resize-none"
+            />
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-xl border border-border bg-card px-3.5 py-1.5 text-xs font-semibold text-foreground hover:bg-muted cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={!topic.trim() || loading}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-4 py-1.5 text-xs font-bold text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 cursor-pointer shadow-xs"
+            >
+              {loading ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
+              <span>Create Thread</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function DirectMessageModal({
+  targetUser,
+  currentUserId,
+  directMessage,
+  input,
+  loading,
+  sending,
+  onChangeInput,
+  onClose,
+  onSubmit,
+}: {
+  targetUser: UserProfile;
+  currentUserId?: string;
+  directMessage: DirectMessage | null;
+  input: string;
+  loading: boolean;
+  sending: boolean;
+  onChangeInput: (v: string) => void;
+  onClose: () => void;
+  onSubmit: (e: React.FormEvent) => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
+      <div className="panel w-full max-w-lg p-5 shadow-2xl space-y-3 flex flex-col max-h-[85vh]">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-border pb-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="size-9 rounded-xl bg-primary/15 flex items-center justify-center font-bold text-primary text-xs shrink-0">
+              {targetUser.full_name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()}
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <h3 className="font-display font-bold text-sm text-foreground truncate">{targetUser.full_name}</h3>
+                <span className="inline-flex items-center rounded-md bg-muted px-1.5 py-0.2 text-[9px] font-semibold text-muted-foreground">
+                  {targetUser.dynamicRole?.title || targetUser.role_title || "Team Member"}
+                </span>
+              </div>
+              <p className="text-[10px] text-muted-foreground truncate">{targetUser.email}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="rounded-lg p-1 text-muted-foreground hover:bg-muted cursor-pointer">
+            <X className="size-4" />
+          </button>
+        </div>
+
+        {/* Security / Scope Banner */}
+        <div className="rounded-xl border border-primary/20 bg-primary/5 px-3 py-1.5 flex items-center gap-2 text-[11px] text-muted-foreground">
+          <Lock className="size-3 text-primary shrink-0" />
+          <span>Project-scoped direct message. Encrypted and accessible only by you and {targetUser.full_name}.</span>
+        </div>
+
+        {/* Message Stream */}
+        <div className="flex-1 overflow-y-auto p-3 space-y-2.5 rounded-xl bg-background/60 border border-border/50 min-h-[220px] max-h-[350px]">
+          {loading ? (
+            <div className="flex flex-col items-center justify-center py-12 text-muted-foreground gap-2">
+              <Loader2 className="size-5 animate-spin text-primary" />
+              <p className="text-xs">Loading conversation history…</p>
+            </div>
+          ) : !directMessage?.messages || directMessage.messages.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground gap-1.5">
+              <MessageCircle className="size-7 text-muted-foreground/30" />
+              <p className="text-xs font-semibold text-foreground">No direct messages yet</p>
+              <p className="text-[11px]">Send a message to start a 1-on-1 discussion within this project context.</p>
+            </div>
+          ) : (
+            directMessage.messages.map((m, idx) => {
+              const isMe = m.author_id === currentUserId;
+              return (
+                <div
+                  key={idx}
+                  className={cn("flex flex-col max-w-[80%]", isMe ? "ml-auto items-end" : "mr-auto items-start")}
+                >
+                  <div
+                    className={cn(
+                      "rounded-2xl px-3.5 py-2 text-xs leading-relaxed break-words",
+                      isMe
+                        ? "bg-primary text-primary-foreground rounded-br-xs"
+                        : "bg-card border border-border/80 text-foreground rounded-bl-xs shadow-xs"
+                    )}
+                  >
+                    {m.content}
+                  </div>
+                  <div className="flex items-center gap-1.5 text-[9px] text-muted-foreground mt-0.5 px-1 font-mono">
+                    <span>{m.created_at ? format(parseISO(m.created_at), "h:mm a") : ""}</span>
+                    {isMe && m.read_at && (
+                      <span className="text-primary font-sans font-medium flex items-center gap-0.5">
+                        <CheckCircle2 className="size-2.5" /> Read
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* Composer */}
+        <form onSubmit={onSubmit} className="flex gap-2 pt-1">
+          <input
+            type="text"
+            value={input}
+            onChange={(e) => onChangeInput(e.target.value)}
+            placeholder={`Message ${targetUser.full_name}…`}
+            disabled={sending}
+            className="flex-1 rounded-xl border border-border bg-card px-3.5 py-2 text-xs text-foreground placeholder:text-muted-foreground outline-none focus:border-primary transition-colors"
+          />
+          <button
+            type="submit"
+            disabled={sending || !input.trim()}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-xs font-bold text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 cursor-pointer shadow-xs"
+          >
+            {sending ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
+            <span>Send</span>
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+

@@ -8,6 +8,7 @@ const { verifyToken, requirePM, requireProductLead } = require("../middleware/au
 const { checkCapacityConflict, resolveConflictByPriority } = require("../lib/capacityRegistry");
 const { calculateProjectCost, calculateBudgetBurn } = require("../lib/costCalculator");
 const { finalizeCreationThreadHelper } = require("./creationThread");
+const { ensureTeamChannel } = require("./collaboration");
 
 // Get all projects with member counts
 router.get("/", verifyToken, async (req, res) => {
@@ -101,6 +102,13 @@ router.post("/", verifyToken, requirePM, async (req, res) => {
       created_by: req.uid,
     });
     await project.save();
+    try {
+      if (project.status === "active") {
+        await ensureTeamChannel(project._id);
+      }
+    } catch (cErr) {
+      console.warn("Could not ensure team channel on project create:", cErr);
+    }
     res.status(201).json(project);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -117,12 +125,17 @@ router.patch("/:id/status", verifyToken, requirePM, async (req, res) => {
       { new: true }
     );
 
-    // If project is launched / approved (active or completed), finalize deliberation thread
+    // If project is launched / approved (active or completed), finalize deliberation thread & ensure team channel
     if (["active", "completed"].includes(status)) {
       try {
         await finalizeCreationThreadHelper(req.params.id, req.uid);
       } catch (fErr) {
         console.warn("Could not finalize creation thread:", fErr);
+      }
+      try {
+        await ensureTeamChannel(req.params.id);
+      } catch (cErr) {
+        console.warn("Could not ensure team channel:", cErr);
       }
     }
 

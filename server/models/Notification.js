@@ -13,6 +13,7 @@ const notificationSchema = new mongoose.Schema(
         "capacity_conflict",
         "midday_p0_nudge",
         "sme_invite",
+        "unresolved_disagreement",
         "system",
       ],
       default: "system",
