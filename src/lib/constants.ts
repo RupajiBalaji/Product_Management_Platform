@@ -166,3 +166,39 @@ export const APPEAL_STATUS_STYLES: Record<
   },
 };
 
+export type SlippageTriggerType = "partial_work_streak" | "repeated_qa_rejection";
+export type SlippageLevel = "normal" | "warning" | "escalation";
+
+export const SLIPPAGE_LEVEL_STYLES: Record<
+  SlippageLevel,
+  { label: string; badge: string; icon: string; border: string }
+> = {
+  normal: {
+    label: "Normal",
+    badge: "border-border bg-secondary/50 text-muted-foreground",
+    icon: "✓",
+    border: "border-border",
+  },
+  warning: {
+    label: "Day 2 Warning",
+    badge: "border-amber-500/40 bg-amber-500/15 text-amber-300 font-bold",
+    icon: "⚠️",
+    border: "border-amber-500/30",
+  },
+  escalation: {
+    label: "Escalation Alert",
+    badge: "border-destructive/40 bg-destructive/20 text-destructive font-extrabold animate-pulse",
+    icon: "🚨",
+    border: "border-destructive/40",
+  },
+};
+
+export const SLIPPAGE_DEFAULT_OPTIONS: Record<SlippageTriggerType, string[]> = {
+  partial_work_streak: ["Reassign overflow", "Schedule 1-on-1", "Extend milestone"],
+  repeated_qa_rejection: [
+    "Schedule clarification session",
+    "Reassign to experienced teammate",
+    "Simplify acceptance criteria",
+  ],
+};
+

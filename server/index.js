@@ -23,6 +23,8 @@ const rolesRoutes = require("./routes/roles");
 const capacityRoutes = require("./routes/capacity");
 const submissionsRoutes = require("./routes/submissions");
 const appealsRoutes = require("./routes/appeals");
+const slippageRoutes = require("./routes/slippage");
+const { startSlippageCron, runSlippageCheck } = require("./jobs/slippageChecker");
 const seedDatabase = require("./seed");
 const { verifyToken, requirePM } = require("./middleware/auth");
 
@@ -109,6 +111,27 @@ app.use("/api/roles", rolesRoutes);
 app.use("/api/capacity", capacityRoutes);
 app.use("/api/submissions", submissionsRoutes);
 app.use("/api/appeals", appealsRoutes);
+app.use("/api/slippage", slippageRoutes);
+
+// Internal runner endpoint for automated/manual slippage check
+app.post("/api/internal/run-slippage-check", async (req, res) => {
+  try {
+    const secretHeader = req.headers["x-internal-secret"];
+    const expectedSecret = process.env.INTERNAL_SECRET || "autonomous-pm-internal-secret";
+
+    if (secretHeader !== expectedSecret) {
+      return res.status(403).json({
+        success: false,
+        error: "Unauthorized: Invalid or missing x-internal-secret header",
+      });
+    }
+
+    const results = await runSlippageCheck();
+    return res.json({ success: true, results });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
 
 // Seed API endpoint (Protected)
 app.post("/api/seed", verifyToken, async (req, res) => {
@@ -201,6 +224,8 @@ app.use((err, req, res, _next) => {
 // Start Server
 const server = app.listen(PORT, () => {
   console.log(`🚀 [Server] Production Express API running on http://localhost:${PORT}`);
+  // Initialize automated daily slippage checker cron job
+  startSlippageCron();
 });
 
 module.exports = { app, server };

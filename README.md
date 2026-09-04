@@ -66,17 +66,32 @@ Traditional enterprise project management tools (Jira, Asana, Monday.com) are fr
 - **Unified Review & Appeals Queue (`/pm/reviews`)**: Dedicated interface for Product Leads and Lead Architects with two-pane inspection, one-click deliverable approval/rejection, and appeal adjudication.
 - **Contested Appeal Mechanism**: Employees can contest rejected deliverables with justifications; Lead/Architect overrides flip submissions directly to `approved`, update task status, and record an immutable `APPEAL_RESOLVED` event in `AuditLog`.
 
-### 6. 📅 Interactive Calendar Matrix GUI
+### 6. 🚨 3-Day Slippage Detection & Repeated QA-Rejection Loop Detection (Phase 5)
+- **Automated Slippage Detection Engine (`server/jobs/slippageChecker.js`)**: Scheduled via `node-cron` (daily at 00:05) and callable via `POST /api/internal/run-slippage-check` (protected by `x-internal-secret`).
+- **3-Day Partial Work Streak Tracker**: Pure logic module (`calculatePartialWorkStreak`) calculating consecutive incomplete work days:
+  - 0–1 days → `normal`
+  - 2 days → `warning` (horizontal Day 1 → Day 2 progress badge)
+  - 3+ days → `escalation` (prominent Product Lead alert panel, notification dispatched)
+- **Repeated QA-Rejection Loop Detector**: Pure logic module (`calculateRepeatedRejectionLoop`) tracking consecutive rejections on tasks:
+  - 2 rejections → Pre-escalation warning badge on task card (`Streak: 2/3`)
+  - 3+ rejections → Automatic escalation alert to Product Lead
+  - Seamless override integration: An appeal override resets the streak immediately.
+- **Structured Escalation Alerts (`buildEscalationAlert`)**: Actionable remediation cards with 3 resolution options:
+  - Partial Work Streak: `["Reassign overflow", "Schedule 1-on-1", "Extend milestone"]`
+  - QA Rejection Loop: `["Schedule clarification session", "Reassign to experienced teammate", "Simplify acceptance criteria"]`
+- **Sovereign Resolution & Audit Trail**: `POST /api/slippage/:id/resolve` records chosen option, marks `resolved: true`, and logs an immutable `SLIPPAGE_EVENT_RESOLVED` event in `AuditLog`.
+
+### 7. 📅 Interactive Calendar Matrix GUI
 - **Day-by-Day Contributor Matrix**: Interactive grid showing real-time contributor status (`Completed`, `In Progress`, `Blocked`, `No Log`).
 - **Instant Log Inspector Modal**: Click any log cell to inspect submitted deliverables, actual hours spent, blocker descriptions, and PR links.
 
-### 6. 👥 Employee 360 & Workload Capacity Engine
+### 8. 👥 Employee 360 & Workload Capacity Engine
 - **Capacity Gauge**: Visual circular gauge displaying real-time allocation percentage across all active projects.
 - **Multi-Project Team Allocation**: Add and remove contributors from projects with automatic role matching.
 - **High-Priority Project Guardrail**: Mark critical initiatives as **High Priority** so developers with multiple commitments know where to focus first.
 - **1-Click Dossier Export**: Generate and print clean executive performance dossiers.
 
-### 6. 🧠 5-Dimension AI Summary & Copilot Hub
+### 9. 🧠 5-Dimension AI Summary & Copilot Hub
 - **Single-Log & Multi-Log Summaries**: Synthesize daily standup entries into concise bulleted highlights.
 - **Project-Level & Sprint Velocity Insights**: Identify critical-path blockers and predict delivery variance.
 - **Employee 360 & Org-Wide Synthesis**: Executive health checks across engineering, design, and QA.
@@ -213,6 +228,11 @@ The repository is configured as a **Unified Web Service** on Render where Expres
 | `POST` | `/api/appeals` | Contest rejected deliverable with justification (employee only) |
 | `GET` | `/api/appeals/pending` | List pending appeals awaiting adjudication |
 | `POST` | `/api/appeals/:id/resolve` | Resolve appeal (override/upheld) with AuditLog and status flip |
+| `GET` | `/api/slippage/escalations` | List active unresolved slippage & rejection escalations for PM |
+| `GET` | `/api/slippage/project/:projectId` | List unresolved slippage events for a specific project |
+| `GET` | `/api/slippage/employee/:userId` | Get employee's slippage history (self or Lead/Architect) |
+| `POST` | `/api/slippage/:id/resolve` | Resolve slippage escalation with chosen remediation option |
+| `POST` | `/api/internal/run-slippage-check` | Trigger automated slippage detection check (cron or manual) |
 | `POST` | `/api/logs` | Submit daily work log with blocker status |
 | `GET` | `/api/analytics/matrix/:projectId` | Aggregate day-by-day contributor calendar grid |
 | `POST` | `/api/ai/summarize` | Generate multi-dimension executive synthesis |

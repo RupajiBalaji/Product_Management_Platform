@@ -12,14 +12,19 @@ import {
   Calendar,
   Layers,
   Activity,
+  ShieldAlert,
+  Clock,
+  RotateCcw,
+  Loader2,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { useAuth } from "@/context/AuthContext";
-import { getAllProjects, getAllEmployees } from "@/lib/db";
-import type { Project, UserProfile } from "@/lib/types";
-import { PRIORITY_STYLES, normalizePriority, isElevatedPriority } from "@/lib/constants";
+import { getAllProjects, getAllEmployees, getActiveSlippageEscalations, resolveSlippageEvent } from "@/lib/db";
+import type { Project, UserProfile, SlippageEvent } from "@/lib/types";
+import { PRIORITY_STYLES, normalizePriority, isElevatedPriority, SLIPPAGE_LEVEL_STYLES } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/pm/dashboard")({
   component: PMDashboard,
@@ -29,17 +34,38 @@ function PMDashboard() {
   const { userProfile } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
   const [employees, setEmployees] = useState<UserProfile[]>([]);
+  const [slippageEscalations, setSlippageEscalations] = useState<SlippageEvent[]>([]);
+  const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const loadData = async () => {
+    const [p, e, s] = await Promise.all([
+      getAllProjects(),
+      getAllEmployees(),
+      getActiveSlippageEscalations(),
+    ]);
+    setProjects(p);
+    setEmployees(e);
+    setSlippageEscalations(s);
+    setLoading(false);
+  };
+
   useEffect(() => {
-    const load = async () => {
-      const [p, e] = await Promise.all([getAllProjects(), getAllEmployees()]);
-      setProjects(p);
-      setEmployees(e);
-      setLoading(false);
-    };
-    load();
+    loadData();
   }, []);
+
+  const handleResolve = async (id: string, option: string) => {
+    setResolvingId(id);
+    try {
+      await resolveSlippageEvent(id, option);
+      toast.success(`Escalation resolved via "${option}"`);
+      setSlippageEscalations((prev) => prev.filter((item) => (item.id || item._id) !== id));
+    } catch (err: any) {
+      toast.error(err.message || "Failed to resolve escalation");
+    } finally {
+      setResolvingId(null);
+    }
+  };
 
   const activeProjects = projects.filter((p) => p.status === "active");
   const highPriorityProjects = projects.filter((p) => isElevatedPriority(normalizePriority(p.priority)));
@@ -67,6 +93,122 @@ function PMDashboard() {
         </div>
       }
     >
+      {slippageEscalations.length > 0 && (
+        <div className="mb-8 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="flex size-2 rounded-full bg-destructive animate-ping" />
+              <h2 className="font-display text-base font-extrabold text-foreground flex items-center gap-2">
+                <ShieldAlert className="size-4 text-destructive" />
+                Active Delivery Escalations ({slippageEscalations.length})
+              </h2>
+            </div>
+            <p className="text-eyebrow text-[10px] text-muted-foreground hidden sm:block">
+              Requires Product Lead intervention or scope adjustment
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {slippageEscalations.map((event) => {
+              const id = event.id || event._id || "";
+              const isResolving = resolvingId === id;
+              const isStreak = event.trigger_type === "partial_work_streak";
+              const userObj: any = event.user_id;
+              const projectObj: any = event.project_id;
+              const taskObj: any = event.task_id;
+
+              return (
+                <div
+                  key={id}
+                  className="panel p-5 border-l-4 border-l-destructive bg-card/90 space-y-3.5 shadow-md hover:border-destructive/80 transition-all"
+                >
+                  {/* Header Badges */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="inline-flex items-center gap-1 rounded-md bg-destructive/15 text-destructive border border-destructive/30 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide">
+                        {isStreak ? "🚨 3-Day Partial Streak" : "❌ QA Rejection Loop"}
+                      </span>
+                      {projectObj?.title && (
+                        <span className="inline-flex items-center rounded-md bg-secondary/70 border border-border px-2 py-0.5 text-[10px] font-semibold text-foreground truncate max-w-[160px]">
+                          {projectObj.title}
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-eyebrow text-[9px] text-muted-foreground">
+                      {event.created_at ? format(new Date(event.created_at), "MMM d, HH:mm") : "Recent"}
+                    </span>
+                  </div>
+
+                  {/* Title & Target Details */}
+                  <div>
+                    {isStreak ? (
+                      <div className="space-y-1">
+                        <p className="text-xs font-bold text-foreground">
+                          Contributor:{" "}
+                          <span className="text-primary">{userObj?.full_name || event.user_id}</span>
+                        </p>
+                        <div className="flex items-center gap-2 text-[11px] text-muted-foreground font-mono">
+                          <span>Slippage Streak:</span>
+                          <span className="px-1.5 py-0.2 rounded bg-destructive/20 text-destructive font-bold">
+                            {event.day_count || 3} Consecutive Days
+                          </span>
+                          <span>·</span>
+                          <span>~{event.cumulative_slippage_hours || 12}h logged incomplete</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-1">
+                        <p className="text-xs font-bold text-foreground">
+                          Task: <span className="text-foreground">{taskObj?.title || "Deliverable"}</span>
+                        </p>
+                        <div className="flex items-center gap-2 text-[11px] text-muted-foreground font-mono">
+                          <span>Assignee: {userObj?.full_name || event.user_id}</span>
+                          <span>·</span>
+                          <span className="px-1.5 py-0.2 rounded bg-destructive/20 text-destructive font-bold">
+                            {event.rejection_count || 3}x Rejections
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    <p className="text-xs text-muted-foreground mt-2 leading-relaxed bg-elevated/60 p-2.5 rounded-xl border border-border/60">
+                      {event.downstream_impact}
+                    </p>
+                  </div>
+
+                  {/* Resolution Action Options */}
+                  <div className="pt-1">
+                    <p className="text-eyebrow text-[9px] text-muted-foreground mb-1.5">
+                      Select Remediation Action:
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {(event.resolution_options_presented || [
+                        isStreak ? "Reassign overflow" : "Schedule clarification session",
+                        isStreak ? "Schedule 1-on-1" : "Reassign to experienced teammate",
+                        isStreak ? "Extend milestone" : "Simplify acceptance criteria",
+                      ]).map((opt) => (
+                        <button
+                          key={opt}
+                          disabled={isResolving}
+                          onClick={() => handleResolve(id, opt)}
+                          className="flex-1 min-w-[120px] rounded-xl border border-border bg-elevated hover:bg-muted/80 hover:border-primary/50 text-[10px] font-bold text-foreground px-2.5 py-1.5 transition-all text-center cursor-pointer disabled:opacity-50"
+                        >
+                          {isResolving ? (
+                            <Loader2 className="size-3 animate-spin mx-auto" />
+                          ) : (
+                            opt
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Top Gradient KPI Metrics Grid */}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4 mb-8">
         <MetricCard

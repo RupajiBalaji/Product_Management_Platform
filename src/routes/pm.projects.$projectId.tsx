@@ -41,6 +41,7 @@ import {
   addProjectMember,
   removeProjectMember,
   updateProjectPriority,
+  getProjectSlippageEvents,
 } from "@/lib/db";
 import type { Project, Task, UserProfile, DynamicRole } from "@/lib/types";
 import type { ProjectPriority } from "@/lib/constants";
@@ -57,6 +58,7 @@ function ProjectDetailPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [allEmployees, setAllEmployees] = useState<UserProfile[]>([]);
   const [roles, setRoles] = useState<DynamicRole[]>([]);
+  const [slippageEvents, setSlippageEvents] = useState<any[]>([]);
   const [selectedRoleId, setSelectedRoleId] = useState<string>("");
   const [dailyHoursAllocated, setDailyHoursAllocated] = useState<number>(8);
   const [loading, setLoading] = useState(true);
@@ -75,21 +77,35 @@ function ProjectDetailPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const [proj, tsks, emps, dynamicRoles] = await Promise.all([
+      const [proj, tsks, emps, dynamicRoles, slpEvents] = await Promise.all([
         getProjectById(projectId),
         getTasksByProject(projectId),
         getAllEmployees(),
         getRoles(),
+        getProjectSlippageEvents(projectId),
       ]);
       setProject(proj);
       setTasks(tsks);
       setAllEmployees(emps);
       setRoles(dynamicRoles);
+      setSlippageEvents(slpEvents);
     } catch (err) {
       console.error("Error loading project details:", err);
     } finally {
       setLoading(false);
     }
+  };
+
+  const getEmployeeStreakEvent = (userId: string) => {
+    return slippageEvents.find(
+      (ev) =>
+        (ev.user_id === userId ||
+          ev.user_id?._id === userId ||
+          ev.user_id?.id === userId ||
+          ev.user_id?.uid === userId) &&
+        ev.trigger_type === "partial_work_streak" &&
+        !ev.resolved
+    );
   };
 
   useEffect(() => {
@@ -366,6 +382,24 @@ function ProjectDetailPage() {
                               {e.allocatedDailyHours}h/d
                             </span>
                           )}
+                          {(() => {
+                            const streak = getEmployeeStreakEvent(e.id);
+                            if (!streak) return null;
+                            const count = streak.day_count || 1;
+                            return (
+                              <div
+                                className="inline-flex items-center gap-1 rounded-md border border-border/80 bg-background/90 px-1.5 py-0.5 text-[9px]"
+                                title={`Unresolved Slippage Streak: ${count} consecutive partial days`}
+                              >
+                                <span className="font-bold text-muted-foreground text-[8px]">Slippage:</span>
+                                <span className={cn("px-1 py-0.2 rounded font-mono font-bold text-[8px]", count >= 1 ? "bg-amber-500/20 text-amber-300 border border-amber-500/40" : "text-muted-foreground")}>D1</span>
+                                <span className="text-muted-foreground text-[8px]">→</span>
+                                <span className={cn("px-1 py-0.2 rounded font-mono font-bold text-[8px]", count >= 2 ? "bg-amber-500/25 text-amber-300 border border-amber-500/50" : "text-muted-foreground")}>D2</span>
+                                <span className="text-muted-foreground text-[8px]">→</span>
+                                <span className={cn("px-1 py-0.2 rounded font-mono font-bold text-[8px]", count >= 3 ? "bg-destructive/25 text-destructive border border-destructive/50 animate-pulse font-extrabold" : "text-muted-foreground")}>D3</span>
+                              </div>
+                            );
+                          })()}
                         </div>
                       ))
                     )}
@@ -818,6 +852,21 @@ function ProjectDetailPage() {
                           <p className="text-[10px] text-muted-foreground truncate">
                             {emp.allocatedDailyHours ? `${emp.allocatedDailyHours} hrs/day · ` : ""}{emp.email}
                           </p>
+                          {(() => {
+                            const streak = getEmployeeStreakEvent(emp.id);
+                            if (!streak) return null;
+                            const count = streak.day_count || 1;
+                            return (
+                              <div className="flex items-center gap-1.5 mt-2 pt-1.5 border-t border-border/50 text-[10px]">
+                                <span className="font-bold text-muted-foreground">3-Day Slippage:</span>
+                                <span className={cn("px-1.5 py-0.2 rounded font-mono font-bold text-[9px]", count >= 1 ? "bg-amber-500/20 text-amber-300 border border-amber-500/40" : "bg-muted text-muted-foreground")}>Day 1</span>
+                                <span className="text-muted-foreground text-[9px]">→</span>
+                                <span className={cn("px-1.5 py-0.2 rounded font-mono font-bold text-[9px]", count >= 2 ? "bg-amber-500/25 text-amber-300 border border-amber-500/50" : "bg-muted text-muted-foreground")}>Day 2</span>
+                                <span className="text-muted-foreground text-[9px]">→</span>
+                                <span className={cn("px-1.5 py-0.2 rounded font-mono font-bold text-[9px]", count >= 3 ? "bg-destructive/25 text-destructive border border-destructive/50 animate-pulse font-extrabold" : "bg-muted text-muted-foreground")}>Day 3 (Escalation)</span>
+                              </div>
+                            );
+                          })()}
                         </div>
                       </div>
 

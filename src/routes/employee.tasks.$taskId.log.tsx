@@ -420,6 +420,41 @@ function TaskDeliverableAndLogPage() {
                 </button>
               </div>
 
+              {/* QA Rejection Warning Indicator (Streak >= 2) */}
+              {(() => {
+                let streak = 0;
+                for (const s of submissions) {
+                  if (s.status === "rejected") {
+                    streak++;
+                  } else if (s.status === "approved") {
+                    break;
+                  } else {
+                    break;
+                  }
+                }
+                if (streak < 2) return null;
+                return (
+                  <div className="rounded-xl border border-warning/40 bg-warning/10 p-3.5 flex items-start sm:items-center justify-between gap-3 text-xs shadow-xs">
+                    <div className="flex items-start gap-2.5">
+                      <AlertTriangle className="size-4 text-warning shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-bold text-warning">
+                          QA Rejection Warning ({streak} consecutive rejections)
+                        </p>
+                        <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
+                          {streak >= 3
+                            ? "This deliverable has reached 3 consecutive rejections. A slippage alert has been dispatched to the Product Lead for assistance or criteria review."
+                            : "This deliverable has failed QA verification 2 times in a row. A 3rd consecutive rejection will trigger an automated escalation to the Product Lead."}
+                        </p>
+                      </div>
+                    </div>
+                    <span className="px-2 py-0.5 rounded-full border border-warning/50 bg-warning/20 text-[10px] font-mono font-bold text-warning shrink-0">
+                      Streak: {streak}/3
+                    </span>
+                  </div>
+                );
+              })()}
+
               {submissions.length === 0 ? (
                 <div className="panel p-8 text-center text-muted-foreground text-xs">
                   <Sparkles className="size-8 mx-auto text-muted-foreground/30 mb-2" />

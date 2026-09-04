@@ -658,3 +658,57 @@ export async function resolveAppeal(
   };
 }
 
+// ─── Phase 5: Slippage & Rejection Loop Escalations ───────────────────────────
+
+export async function getActiveSlippageEscalations(): Promise<import("@/lib/types").SlippageEvent[]> {
+  try {
+    const res = await apiFetch("/api/slippage/escalations");
+    return normalizeDocs(res.events || []);
+  } catch {
+    return [];
+  }
+}
+
+export async function getProjectSlippageEvents(projectId: string): Promise<import("@/lib/types").SlippageEvent[]> {
+  try {
+    const res = await apiFetch(`/api/slippage/project/${projectId}`);
+    return normalizeDocs(res.events || []);
+  } catch {
+    return [];
+  }
+}
+
+export async function getEmployeeSlippageEvents(userId: string): Promise<import("@/lib/types").SlippageEvent[]> {
+  try {
+    const res = await apiFetch(`/api/slippage/employee/${userId}`);
+    return normalizeDocs(res.events || []);
+  } catch {
+    return [];
+  }
+}
+
+export async function resolveSlippageEvent(
+  id: string,
+  resolutionChosen: string
+): Promise<{ success: boolean; slippageEvent: import("@/lib/types").SlippageEvent }> {
+  const res = await apiFetch(`/api/slippage/${id}/resolve`, {
+    method: "POST",
+    body: JSON.stringify({ resolution_chosen: resolutionChosen }),
+  });
+  return {
+    ...res,
+    slippageEvent: normalizeDoc(res.slippageEvent),
+  };
+}
+
+export async function triggerManualSlippageCheck(): Promise<any> {
+  const res = await apiFetch("/api/slippage/run-check", {
+    method: "POST",
+    headers: {
+      "x-internal-secret": "autonomous-pm-internal-secret",
+    },
+  });
+  return res.results;
+}
+
+

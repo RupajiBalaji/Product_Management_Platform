@@ -176,3 +176,27 @@ export interface Appeal {
   updated_at?: string;
 }
 
+// ─── Phase 5: Slippage & Rejection Loop Types ─────────────────────────────────
+
+export interface SlippageEvent {
+  id: string;
+  _id?: string;
+  user_id: string | UserProfile;
+  project_id: string | Project;
+  trigger_type: import("@/lib/constants").SlippageTriggerType;
+  day_count?: number;
+  rejection_count?: number;
+  task_id?: string | Task;
+  level: import("@/lib/constants").SlippageLevel;
+  cumulative_slippage_hours: number;
+  downstream_impact: string;
+  resolution_options_presented: string[];
+  resolved: boolean;
+  resolved_by?: string | UserProfile;
+  resolution_chosen?: string;
+  resolved_at?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+
