@@ -124,6 +124,32 @@ app.get("/api/health", (req, res) => {
   });
 });
 
+// Favicon & Branding Logo endpoints (Explicitly serve platform brand logo for direct API browser tabs)
+app.get("/favicon.ico", (req, res) => {
+  const icoPath = path.resolve(process.cwd(), "public", "favicon.ico");
+  const logoPath = path.resolve(process.cwd(), "public", "logo.png");
+  res.setHeader("Cache-Control", "public, max-age=86400");
+  if (fs.existsSync(icoPath)) {
+    res.type("image/x-icon");
+    return res.sendFile(icoPath);
+  }
+  if (fs.existsSync(logoPath)) {
+    res.type("image/png");
+    return res.sendFile(logoPath);
+  }
+  res.status(204).end();
+});
+
+app.get("/logo.png", (req, res) => {
+  const logoPath = path.resolve(process.cwd(), "public", "logo.png");
+  if (fs.existsSync(logoPath)) {
+    res.setHeader("Cache-Control", "public, max-age=86400");
+    res.type("image/png");
+    return res.sendFile(logoPath);
+  }
+  res.status(404).end();
+});
+
 // Serve Static Frontend in Production (Render / Unified Deployment)
 const distPath = path.resolve(process.cwd(), "dist");
 
