@@ -61,6 +61,8 @@ export interface Project {
   member_ids: string[];
   team_allocations?: TeamAllocation[];
   members?: UserProfile[];
+  success_metrics?: Array<{ description: string; target: string }>;
+  completed_at?: string | null;
   created_at: string;
 }
 
@@ -454,3 +456,67 @@ export interface DirectMessage {
   };
   messages: DirectMessageItem[];
 }
+
+// ─── Phase 11: Retrospective & Project Completion Types ───────────────────────
+
+export interface RetrospectiveSuccessMetric {
+  metricDescription: string;
+  targetValue: string;
+  actualValue?: string;
+  achieved: boolean | null;
+}
+
+export interface RetrospectiveEstimationAccuracy {
+  overall: {
+    totalEstimatedHours: number;
+    totalActualHours: number;
+    variancePct: number;
+  };
+  byEmployee: Array<{
+    userId: string;
+    estimatedHours: number;
+    actualHours: number;
+    variancePct: number;
+  }>;
+  byPhase: Array<{
+    phaseOrTaskGroup: string;
+    estimatedHours: number;
+    actualHours: number;
+    variancePct: number;
+  }>;
+}
+
+export interface RetrospectiveIncidentSummary {
+  slippageEventsCount: number;
+  qaRejectionLoopCount: number;
+  scopeChangesCount: number;
+  blockerIncidentsCount: number;
+}
+
+export interface RetrospectiveTeamPerformance {
+  userId: string;
+  onTimeReliabilityPct: number | null;
+  firstPassQualityPct: number | null;
+  tasksCompleted: number;
+}
+
+export interface Retrospective {
+  id?: string;
+  _id?: string;
+  project_id: string;
+  generated_at: string;
+  estimation_accuracy: RetrospectiveEstimationAccuracy;
+  incident_summary: RetrospectiveIncidentSummary;
+  success_metrics: RetrospectiveSuccessMetric[];
+  lessons_learned: string[];
+  team_performance: RetrospectiveTeamPerformance[];
+  locked: boolean;
+}
+
+export interface IncompleteTaskItem {
+  id: string;
+  title: string;
+  status: string;
+  assignee_ids: string[];
+}
+

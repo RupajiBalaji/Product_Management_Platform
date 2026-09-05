@@ -35,6 +35,10 @@ import {
   AtSign,
   Eye,
   AlertOctagon,
+  Target,
+  CheckCheck,
+  Award,
+  BookOpen,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format, parseISO, differenceInDays } from "date-fns";
@@ -65,6 +69,9 @@ import {
   postChannelMessage,
   getProjectDirectMessage,
   postProjectDirectMessage,
+  completeProject,
+  getProjectRetrospective,
+  updateProjectSuccessMetrics,
 } from "@/lib/db";
 import type {
   Project,
@@ -80,6 +87,8 @@ import type {
   ChannelMessage,
   DirectMessage,
   DirectMessageItem,
+  Retrospective,
+  IncompleteTaskItem,
 } from "@/lib/types";
 import type { ProjectPriority, ProjectHealthStatus } from "@/lib/constants";
 import {
@@ -150,6 +159,32 @@ function ProjectDetailPage() {
   const [sendingDm, setSendingDm] = useState(false);
   const [loadingDm, setLoadingDm] = useState(false);
 
+  // Phase 11: Formal Project Completion & Retrospective Protocol State
+  const [retrospective, setRetrospective] = useState<Retrospective | null>(null);
+  const [loadingRetro, setLoadingRetro] = useState(false);
+  const [showCompleteModal, setShowCompleteModal] = useState(false);
+  const [completingProject, setCompletingProject] = useState(false);
+  const [completionMetricInputs, setCompletionMetricInputs] = useState<
+    Array<{ description: string; target: string; actualValue: string; achieved: boolean | null }>
+  >([]);
+  const [showMetricsModal, setShowMetricsModal] = useState(false);
+  const [metricsEditorList, setMetricsEditorList] = useState<Array<{ description: string; target: string }>>([]);
+  const [savingMetrics, setSavingMetrics] = useState(false);
+
+  const loadRetrospective = async () => {
+    setLoadingRetro(true);
+    try {
+      const res = await getProjectRetrospective(projectId);
+      if (res && res.success) {
+        setRetrospective(res.retrospective);
+      }
+    } catch {
+      setRetrospective(null);
+    } finally {
+      setLoadingRetro(false);
+    }
+  };
+
   const loadThread = async () => {
     try {
       const tRes = await getCreationThread(projectId);
@@ -202,11 +237,51 @@ function ProjectDetailPage() {
         }
       }
 
-      await Promise.all([loadThread(), loadChannel()]);
+      await Promise.all([
+        loadThread(),
+        loadChannel(),
+        proj?.status === "completed" ? loadRetrospective() : Promise.resolve(),
+      ]);
     } catch (err) {
       console.error("Error loading project details:", err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSaveMetrics = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingMetrics(true);
+    try {
+      const valid = metricsEditorList.filter((m) => m.description.trim().length > 0);
+      const res = await updateProjectSuccessMetrics(projectId, valid);
+      if (res && res.success) {
+        toast.success("Success metrics updated");
+        setProject((prev) => (prev ? { ...prev, success_metrics: res.success_metrics } : null));
+        setShowMetricsModal(false);
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update success metrics");
+    } finally {
+      setSavingMetrics(false);
+    }
+  };
+
+  const handleCompleteProject = async () => {
+    setCompletingProject(true);
+    try {
+      const res = await completeProject(projectId, completionMetricInputs);
+      if (res && res.success) {
+        toast.success("Project formally completed! Retrospective generated.");
+        setProject(res.project);
+        setRetrospective(res.retrospective);
+        setShowCompleteModal(false);
+        await load();
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to complete project");
+    } finally {
+      setCompletingProject(false);
     }
   };
 
@@ -546,8 +621,45 @@ function ProjectDetailPage() {
           </button>
 
           <button
+            onClick={() => {
+              setMetricsEditorList(project?.success_metrics || []);
+              setShowMetricsModal(true);
+            }}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-card px-3 py-2 text-xs font-semibold text-foreground hover:border-primary/50 transition-colors cursor-pointer"
+          >
+            <Target className="size-3.5 text-primary" />
+            <span>Success Metrics ({project?.success_metrics?.length || 0})</span>
+          </button>
+
+          {project?.status === "completed" ? (
+            <div className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-500/40 bg-emerald-500/15 px-3 py-2 text-xs font-bold text-emerald-300">
+              <CheckCheck className="size-3.5 text-emerald-400" />
+              <span>Project Completed</span>
+            </div>
+          ) : (
+            isProductLead && (
+              <button
+                onClick={() => {
+                  const initialMetrics = (project?.success_metrics || []).map((m) => ({
+                    description: m.description,
+                    target: m.target,
+                    actualValue: "",
+                    achieved: null,
+                  }));
+                  setCompletionMetricInputs(initialMetrics);
+                  setShowCompleteModal(true);
+                }}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white shadow-glow hover:bg-emerald-500 transition-colors cursor-pointer"
+              >
+                <CheckCircle2 className="size-3.5" /> Complete Project
+              </button>
+            )
+          )}
+
+          <button
             onClick={() => setShowTaskModal(true)}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3.5 py-2 text-xs font-bold text-primary-foreground shadow-glow hover:bg-primary/90 transition-colors cursor-pointer"
+            disabled={project?.status === "completed"}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3.5 py-2 text-xs font-bold text-primary-foreground shadow-glow hover:bg-primary/90 transition-colors cursor-pointer disabled:opacity-50"
           >
             <Plus className="size-4" /> Add Task
           </button>
@@ -562,6 +674,277 @@ function ProjectDetailPage() {
         </div>
       ) : (
         <>
+          {/* Phase 11: Formal Project Completion & Retrospective View */}
+          {project?.status === "completed" && (
+            <div className="panel p-6 mb-6 border-emerald-500/40 bg-card/90 shadow-md">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4 mb-5">
+                <div className="flex items-center gap-3">
+                  <div className="size-10 rounded-xl bg-emerald-500/20 flex items-center justify-center text-emerald-400">
+                    <Award className="size-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h2 className="font-display text-lg font-bold text-foreground">
+                        Formal Project Retrospective & Post-Mortem
+                      </h2>
+                      <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-bold text-emerald-400">
+                        <Lock className="size-3" /> Locked & Immutable
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Completed{" "}
+                      {project.completed_at
+                        ? format(parseISO(project.completed_at), "MMMM d, yyyy · h:mm a")
+                        : "Recently"}{" "}
+                      · Automated Telemetry & AI Calibration Post-Mortem
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {loadingRetro ? (
+                <div className="py-12 text-center text-muted-foreground">
+                  <Loader2 className="size-6 animate-spin mx-auto mb-2 text-primary" />
+                  Loading retrospective analytics...
+                </div>
+              ) : !retrospective ? (
+                <div className="p-8 text-center text-muted-foreground">
+                  No retrospective generated for this completed project.
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {/* 1. Incident Summary 4-Box Metric Row */}
+                  <div>
+                    <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2.5">
+                      Delivery Incidents & Governance Signals
+                    </h3>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      <div className="panel p-3.5 bg-card border-border/80 text-center">
+                        <span className="text-[10px] text-muted-foreground font-medium block">Slippage Events</span>
+                        <span className={cn("text-xl font-bold font-mono mt-1 block", retrospective.incident_summary.slippageEventsCount > 0 ? "text-amber-400" : "text-emerald-400")}>
+                          {retrospective.incident_summary.slippageEventsCount}
+                        </span>
+                      </div>
+                      <div className="panel p-3.5 bg-card border-border/80 text-center">
+                        <span className="text-[10px] text-muted-foreground font-medium block">QA Rejection Loops (≥3)</span>
+                        <span className={cn("text-xl font-bold font-mono mt-1 block", retrospective.incident_summary.qaRejectionLoopCount > 0 ? "text-rose-400" : "text-emerald-400")}>
+                          {retrospective.incident_summary.qaRejectionLoopCount}
+                        </span>
+                      </div>
+                      <div className="panel p-3.5 bg-card border-border/80 text-center">
+                        <span className="text-[10px] text-muted-foreground font-medium block">Scope Changes</span>
+                        <span className="text-xl font-bold font-mono text-foreground mt-1 block">
+                          {retrospective.incident_summary.scopeChangesCount}
+                        </span>
+                      </div>
+                      <div className="panel p-3.5 bg-card border-border/80 text-center">
+                        <span className="text-[10px] text-muted-foreground font-medium block">Blocked Actions</span>
+                        <span className={cn("text-xl font-bold font-mono mt-1 block", retrospective.incident_summary.blockerIncidentsCount > 0 ? "text-amber-400" : "text-emerald-400")}>
+                          {retrospective.incident_summary.blockerIncidentsCount}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 2. Estimation Accuracy Analysis */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2.5">
+                      <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                        Estimation Accuracy Analysis
+                      </h3>
+                      <span className={cn("px-2 py-0.5 rounded text-xs font-mono font-bold border", retrospective.estimation_accuracy.overall.variancePct > 20 ? "bg-rose-500/15 text-rose-300 border-rose-500/30" : retrospective.estimation_accuracy.overall.variancePct < -10 ? "bg-blue-500/15 text-blue-300 border-blue-500/30" : "bg-emerald-500/15 text-emerald-300 border-emerald-500/30")}>
+                        Overall Variance: {retrospective.estimation_accuracy.overall.variancePct > 0 ? `+${retrospective.estimation_accuracy.overall.variancePct}%` : `${retrospective.estimation_accuracy.overall.variancePct}%`}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* By Role Domain / Phase */}
+                      <div className="panel p-4 bg-surface-elevated/40 border-border space-y-3">
+                        <div className="text-xs font-semibold text-foreground flex items-center justify-between">
+                          <span>Accuracy by Role Domain</span>
+                          <span className="text-[10px] text-muted-foreground">Est vs Act</span>
+                        </div>
+                        {retrospective.estimation_accuracy.byPhase.length === 0 ? (
+                          <p className="text-xs text-muted-foreground italic">No domain data recorded.</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {retrospective.estimation_accuracy.byPhase.map((p, idx) => (
+                              <div key={idx} className="flex items-center justify-between text-xs p-2 rounded-lg bg-card/60 border border-border/50">
+                                <span className="font-semibold text-foreground">{p.phaseOrTaskGroup}</span>
+                                <div className="flex items-center gap-3 text-muted-foreground font-mono text-[11px]">
+                                  <span>{p.estimatedHours}h est</span>
+                                  <span>→</span>
+                                  <span className="text-foreground font-bold">{p.actualHours}h act</span>
+                                  <span className={cn("px-1.5 py-0.2 rounded font-bold text-[10px]", p.variancePct > 15 ? "text-rose-400 bg-rose-500/10" : p.variancePct < -10 ? "text-blue-400 bg-blue-500/10" : "text-emerald-400 bg-emerald-500/10")}>
+                                    {p.variancePct > 0 ? `+${p.variancePct}%` : `${p.variancePct}%`}
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* By Contributor */}
+                      <div className="panel p-4 bg-surface-elevated/40 border-border space-y-3">
+                        <div className="text-xs font-semibold text-foreground flex items-center justify-between">
+                          <span>Accuracy by Contributor</span>
+                          <span className="text-[10px] text-muted-foreground">Est vs Act</span>
+                        </div>
+                        {retrospective.estimation_accuracy.byEmployee.length === 0 ? (
+                          <p className="text-xs text-muted-foreground italic">No contributor data recorded.</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {retrospective.estimation_accuracy.byEmployee.map((e, idx) => {
+                              const empName = allEmployees.find((u) => u.id === e.userId)?.full_name || e.userId;
+                              return (
+                                <div key={idx} className="flex items-center justify-between text-xs p-2 rounded-lg bg-card/60 border border-border/50">
+                                  <span className="font-semibold text-foreground truncate max-w-[140px]">{empName}</span>
+                                  <div className="flex items-center gap-3 text-muted-foreground font-mono text-[11px]">
+                                    <span>{e.estimatedHours}h est</span>
+                                    <span>→</span>
+                                    <span className="text-foreground font-bold">{e.actualHours}h act</span>
+                                    <span className={cn("px-1.5 py-0.2 rounded font-bold text-[10px]", e.variancePct > 15 ? "text-rose-400 bg-rose-500/10" : e.variancePct < -10 ? "text-blue-400 bg-blue-500/10" : "text-emerald-400 bg-emerald-500/10")}>
+                                      {e.variancePct > 0 ? `+${e.variancePct}%` : `${e.variancePct}%`}
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 3. Success Metrics Evaluation Table */}
+                  <div>
+                    <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2.5">
+                      Success Metrics Scorecard
+                    </h3>
+                    {retrospective.success_metrics.length === 0 ? (
+                      <p className="text-xs text-muted-foreground italic py-3">No formal success metrics were configured for this project.</p>
+                    ) : (
+                      <div className="overflow-x-auto rounded-xl border border-border">
+                        <table className="w-full text-xs text-left">
+                          <thead className="bg-muted/40 text-muted-foreground font-semibold border-b border-border">
+                            <tr>
+                              <th className="px-4 py-2.5">Metric Description</th>
+                              <th className="px-4 py-2.5">Target Value</th>
+                              <th className="px-4 py-2.5">Actual Value</th>
+                              <th className="px-4 py-2.5">Outcome</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-border/60 bg-card">
+                            {retrospective.success_metrics.map((m, idx) => (
+                              <tr key={idx} className="hover:bg-muted/20">
+                                <td className="px-4 py-2.5 font-medium text-foreground">{m.metricDescription}</td>
+                                <td className="px-4 py-2.5 font-mono text-muted-foreground">{m.targetValue}</td>
+                                <td className="px-4 py-2.5 font-mono text-foreground">{m.actualValue || "—"}</td>
+                                <td className="px-4 py-2.5">
+                                  {m.achieved === true ? (
+                                    <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                                      <CheckCircle2 className="size-2.5" /> Met
+                                    </span>
+                                  ) : m.achieved === false ? (
+                                    <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-bold bg-rose-500/15 text-rose-400 border border-rose-500/30">
+                                      ✕ Missed
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-medium bg-muted text-muted-foreground border border-border">
+                                      ⏳ Not Measurable
+                                    </span>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 4. AI Synthesized Lessons Learned */}
+                  <div className="panel p-4 border-indigo-500/30 bg-indigo-950/15 space-y-2.5">
+                    <div className="flex items-center gap-2 text-indigo-300 text-xs font-bold">
+                      <Sparkles className="size-4 text-indigo-400" />
+                      <span>AI Synthesized Retrospective Lessons & Calibration Factors</span>
+                    </div>
+                    <ul className="space-y-2 text-xs text-foreground/90 pl-1">
+                      {retrospective.lessons_learned.map((lesson, idx) => (
+                        <li key={idx} className="flex items-start gap-2">
+                          <span className="text-indigo-400 font-bold">•</span>
+                          <span className="leading-relaxed">{lesson}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  {/* 5. Team Performance Reliability Ledger */}
+                  <div>
+                    <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2.5">
+                      Team Performance & Reliability Telemetry
+                    </h3>
+                    <div className="overflow-x-auto rounded-xl border border-border">
+                      <table className="w-full text-xs text-left">
+                        <thead className="bg-muted/40 text-muted-foreground font-semibold border-b border-border">
+                          <tr>
+                            <th className="px-4 py-2.5">Team Member</th>
+                            <th className="px-4 py-2.5">Tasks Completed</th>
+                            <th className="px-4 py-2.5">On-Time Reliability</th>
+                            <th className="px-4 py-2.5">First-Pass QA Quality</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border/60 bg-card">
+                          {retrospective.team_performance.map((tp, idx) => {
+                            const emp = allEmployees.find((u) => u.id === tp.userId);
+                            return (
+                              <tr key={idx} className="hover:bg-muted/20">
+                                <td className="px-4 py-2.5 font-medium text-foreground flex items-center gap-2">
+                                  <span className="size-6 rounded-lg bg-primary/20 flex items-center justify-center font-bold text-[10px] text-primary">
+                                    {(emp?.full_name || tp.userId).slice(0, 2).toUpperCase()}
+                                  </span>
+                                  <span>{emp?.full_name || tp.userId}</span>
+                                </td>
+                                <td className="px-4 py-2.5 font-mono text-foreground font-bold">{tp.tasksCompleted}</td>
+                                <td className="px-4 py-2.5">
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-20 bg-muted rounded-full h-1.5 overflow-hidden">
+                                      <div
+                                        className={cn("h-full", (tp.onTimeReliabilityPct || 0) >= 80 ? "bg-emerald-500" : (tp.onTimeReliabilityPct || 0) >= 50 ? "bg-amber-500" : "bg-rose-500")}
+                                        style={{ width: `${tp.onTimeReliabilityPct || 0}%` }}
+                                      />
+                                    </div>
+                                    <span className="font-mono text-[11px] font-bold">
+                                      {tp.onTimeReliabilityPct !== null ? `${tp.onTimeReliabilityPct}%` : "—"}
+                                    </span>
+                                  </div>
+                                </td>
+                                <td className="px-4 py-2.5">
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-20 bg-muted rounded-full h-1.5 overflow-hidden">
+                                      <div
+                                        className={cn("h-full", (tp.firstPassQualityPct || 0) >= 80 ? "bg-emerald-500" : (tp.firstPassQualityPct || 0) >= 50 ? "bg-amber-500" : "bg-rose-500")}
+                                        style={{ width: `${tp.firstPassQualityPct || 0}%` }}
+                                      />
+                                    </div>
+                                    <span className="font-mono text-[11px] font-bold">
+                                      {tp.firstPassQualityPct !== null ? `${tp.firstPassQualityPct}%` : "—"}
+                                    </span>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Priority Notice Banner for P1/P2 */}
           {isElevatedPriority(currentPriority) && (
             <div className={cn(
@@ -1818,6 +2201,30 @@ function ProjectDetailPage() {
           onSubmit={handleSendDm}
         />
       )}
+
+      {/* Project Completion Modal (Phase 11) */}
+      {showCompleteModal && (
+        <ProjectCompletionModal
+          tasks={tasks}
+          allEmployees={allEmployees}
+          metrics={completionMetricInputs}
+          loading={completingProject}
+          onChangeMetrics={setCompletionMetricInputs}
+          onClose={() => setShowCompleteModal(false)}
+          onSubmit={handleCompleteProject}
+        />
+      )}
+
+      {/* Success Metrics Management Modal (Phase 11) */}
+      {showMetricsModal && (
+        <SuccessMetricsModal
+          metrics={metricsEditorList}
+          loading={savingMetrics}
+          onChangeMetrics={setMetricsEditorList}
+          onClose={() => setShowMetricsModal(false)}
+          onSubmit={handleSaveMetrics}
+        />
+      )}
     </AppShell>
   );
 }
@@ -2688,6 +3095,335 @@ function DirectMessageModal({
             {sending ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
             <span>Send</span>
           </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function ProjectCompletionModal({
+  tasks,
+  allEmployees,
+  metrics,
+  loading,
+  onChangeMetrics,
+  onClose,
+  onSubmit,
+}: {
+  tasks: Task[];
+  allEmployees: UserProfile[];
+  metrics: Array<{ description: string; target: string; actualValue: string; achieved: boolean | null }>;
+  loading: boolean;
+  onChangeMetrics: (m: Array<{ description: string; target: string; actualValue: string; achieved: boolean | null }>) => void;
+  onClose: () => void;
+  onSubmit: () => void;
+}) {
+  const incompleteTasks = tasks.filter((t) => t.status !== "completed");
+  const hasIncompleteTasks = incompleteTasks.length > 0;
+
+  const handleMetricValueChange = (index: number, actualValue: string) => {
+    const updated = [...metrics];
+    updated[index] = { ...updated[index], actualValue };
+    onChangeMetrics(updated);
+  };
+
+  const handleMetricAchievedChange = (index: number, achieved: boolean | null) => {
+    const updated = [...metrics];
+    updated[index] = { ...updated[index], achieved };
+    onChangeMetrics(updated);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
+      <div className="panel w-full max-w-2xl p-6 shadow-2xl space-y-5 max-h-[90vh] overflow-y-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-border pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="size-9 rounded-xl bg-emerald-500/15 flex items-center justify-center text-emerald-400 font-bold">
+              <CheckCheck className="size-5" />
+            </div>
+            <div>
+              <h2 className="font-display font-bold text-base text-foreground">
+                Formal Project Completion & Retrospective Protocol
+              </h2>
+              <p className="text-[11px] text-muted-foreground">
+                Execute formal completion protocol, lock project scope, and synthesize performance telemetry
+              </p>
+            </div>
+          </div>
+          <button onClick={onClose} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted cursor-pointer">
+            <X className="size-4" />
+          </button>
+        </div>
+
+        {/* Blocking Alert if Incomplete Tasks */}
+        {hasIncompleteTasks ? (
+          <div className="space-y-4">
+            <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 p-4 space-y-2">
+              <div className="flex items-center gap-2 text-rose-400 text-xs font-bold">
+                <AlertCircle className="size-4 shrink-0" />
+                <span>Completion Blocked: {incompleteTasks.length} Incomplete Task{incompleteTasks.length > 1 ? "s" : ""} Remaining</span>
+              </div>
+              <p className="text-xs text-rose-200/90 leading-relaxed">
+                Per Section 6.2 of the project governance specification, all scheduled tasks must be in <code className="bg-rose-950/60 px-1.5 py-0.5 rounded text-rose-300 font-mono text-[11px]">completed</code> status before a formal retrospective can be synthesized and the project marked completed.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Unfinished Tasks ({incompleteTasks.length})
+              </div>
+              <div className="rounded-xl border border-border divide-y divide-border/60 max-h-52 overflow-y-auto">
+                {incompleteTasks.map((t) => {
+                  const assignees = allEmployees.filter((e) => (t.assignee_ids || []).includes(e.id));
+                  return (
+                    <div key={t.id || (t as any)._id} className="p-3 flex items-center justify-between gap-3 text-xs bg-card/60">
+                      <div className="min-w-0 flex-1">
+                        <div className="font-semibold text-foreground truncate">{t.title}</div>
+                        <div className="text-[10px] text-muted-foreground">
+                          Assignees: {assignees.map((a) => a.full_name).join(", ") || "Unassigned"}
+                        </div>
+                      </div>
+                      <span className="shrink-0 px-2 py-0.5 rounded-full text-[10px] font-mono uppercase bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                        {t.status}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-xl border border-border bg-card px-4 py-2 text-xs font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer"
+              >
+                Close & Return to Tasks
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-5">
+            {/* Protocol Notice */}
+            <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 space-y-2">
+              <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold">
+                <ShieldCheck className="size-4 shrink-0" />
+                <span>Ready for Formal Completion & Retrospective Lock</span>
+              </div>
+              <p className="text-xs text-foreground/90 leading-relaxed">
+                All scheduled tasks are completed. Finalizing will mark the project status as <strong className="text-emerald-400">completed</strong>, lock the timeline, compute estimation accuracy metrics, summarize incidents, and synthesize AI lessons learned. The generated retrospective is strictly immutable.
+              </p>
+            </div>
+
+            {/* Success Metrics Outcomes */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-xs font-bold text-foreground">Evaluate Success Metrics</h3>
+                  <p className="text-[11px] text-muted-foreground">
+                    Record actual observed results against the target criteria defined for this project.
+                  </p>
+                </div>
+              </div>
+
+              {metrics.length === 0 ? (
+                <div className="rounded-xl border border-border/60 bg-muted/20 p-4 text-center text-xs text-muted-foreground">
+                  No predefined success metrics were configured for this project. The retrospective will record success metrics as unconfigured.
+                </div>
+              ) : (
+                <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
+                  {metrics.map((m, idx) => (
+                    <div key={idx} className="panel p-3.5 border-border/80 bg-card/60 space-y-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="font-semibold text-xs text-foreground">{m.description}</div>
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-muted text-muted-foreground border border-border">
+                          Target: {m.target}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                        <div>
+                          <label className="text-[10px] font-medium text-muted-foreground block mb-1">
+                            Actual Value Observed
+                          </label>
+                          <input
+                            type="text"
+                            value={m.actualValue}
+                            onChange={(e) => handleMetricValueChange(idx, e.target.value)}
+                            placeholder="e.g. 185ms, 99.4%, or $12,400"
+                            className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-xs text-foreground outline-none focus:border-primary"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-[10px] font-medium text-muted-foreground block mb-1">
+                            Target Met / Result
+                          </label>
+                          <select
+                            value={m.achieved === true ? "true" : m.achieved === false ? "false" : "null"}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              handleMetricAchievedChange(idx, val === "true" ? true : val === "false" ? false : null);
+                            }}
+                            className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-xs text-foreground outline-none focus:border-primary"
+                          >
+                            <option value="null">⏳ Not Measurable / Null</option>
+                            <option value="true">✓ Met / Achieved</option>
+                            <option value="false">✕ Missed / Failed</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Actions */}
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-border">
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={loading}
+                className="rounded-xl border border-border bg-card px-4 py-2 text-xs font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={onSubmit}
+                disabled={loading}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-5 py-2 text-xs font-bold text-white hover:bg-emerald-500 shadow-glow transition-colors cursor-pointer disabled:opacity-50"
+              >
+                {loading ? <Loader2 className="size-3.5 animate-spin" /> : <CheckCircle2 className="size-3.5" />}
+                <span>Complete Project & Synthesize Retrospective</span>
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SuccessMetricsModal({
+  metrics,
+  loading,
+  onChangeMetrics,
+  onClose,
+  onSubmit,
+}: {
+  metrics: Array<{ description: string; target: string }>;
+  loading: boolean;
+  onChangeMetrics: (m: Array<{ description: string; target: string }>) => void;
+  onClose: () => void;
+  onSubmit: (e: React.FormEvent) => void;
+}) {
+  const handleAddRow = () => {
+    onChangeMetrics([...metrics, { description: "", target: "" }]);
+  };
+
+  const handleRemoveRow = (index: number) => {
+    onChangeMetrics(metrics.filter((_, idx) => idx !== index));
+  };
+
+  const handleChangeRow = (index: number, field: "description" | "target", value: string) => {
+    const updated = [...metrics];
+    updated[index] = { ...updated[index], [field]: value };
+    onChangeMetrics(updated);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
+      <div className="panel w-full max-w-xl p-6 shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto">
+        <div className="flex items-center justify-between border-b border-border pb-3">
+          <div className="flex items-center gap-2">
+            <div className="size-8 rounded-lg bg-primary/15 flex items-center justify-center text-primary">
+              <Target className="size-4" />
+            </div>
+            <div>
+              <h2 className="font-display font-bold text-sm text-foreground">
+                Project Success Metrics & Targets
+              </h2>
+              <p className="text-[10px] text-muted-foreground">
+                Configure measurable goals and targets to benchmark project performance
+              </p>
+            </div>
+          </div>
+          <button onClick={onClose} className="rounded-lg p-1 text-muted-foreground hover:bg-muted cursor-pointer">
+            <X className="size-4" />
+          </button>
+        </div>
+
+        <form onSubmit={onSubmit} className="space-y-4">
+          <div className="space-y-2.5 max-h-64 overflow-y-auto pr-1">
+            {metrics.length === 0 ? (
+              <div className="text-center py-6 text-xs text-muted-foreground italic border border-dashed border-border rounded-xl">
+                No success metrics configured yet. Add targets like latency budgets, test coverage, or throughput.
+              </div>
+            ) : (
+              metrics.map((m, idx) => (
+                <div key={idx} className="flex items-center gap-2 bg-card/60 p-2.5 rounded-xl border border-border">
+                  <div className="flex-1 space-y-1">
+                    <input
+                      type="text"
+                      value={m.description}
+                      onChange={(e) => handleChangeRow(idx, "description", e.target.value)}
+                      placeholder="Metric description (e.g. P95 API Latency)"
+                      className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-xs text-foreground outline-none focus:border-primary"
+                    />
+                  </div>
+                  <div className="w-36 space-y-1">
+                    <input
+                      type="text"
+                      value={m.target}
+                      onChange={(e) => handleChangeRow(idx, "target", e.target.value)}
+                      placeholder="Target (e.g. < 200ms)"
+                      className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-xs text-foreground outline-none focus:border-primary font-mono"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveRow(idx)}
+                    className="p-1.5 text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
+                    title="Remove metric"
+                  >
+                    <Trash2 className="size-4" />
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+
+          <div className="flex items-center justify-between pt-1">
+            <button
+              type="button"
+              onClick={handleAddRow}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted cursor-pointer"
+            >
+              <Plus className="size-3.5 text-primary" /> Add Metric
+            </button>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={loading}
+                className="rounded-xl border border-border bg-card px-3.5 py-1.5 text-xs font-semibold text-foreground hover:bg-muted cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={loading}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-4 py-1.5 text-xs font-bold text-primary-foreground hover:bg-primary/90 shadow-xs cursor-pointer disabled:opacity-50"
+              >
+                {loading ? <Loader2 className="size-3.5 animate-spin" /> : null}
+                <span>Save Targets</span>
+              </button>
+            </div>
+          </div>
         </form>
       </div>
     </div>

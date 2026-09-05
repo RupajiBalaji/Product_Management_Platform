@@ -30,6 +30,14 @@ const projectSchema = new mongoose.Schema(
       type: Number,
       default: null,
     },
+    // Phase 11: Formal Project Completion & Retrospective Protocol
+    success_metrics: [
+      {
+        description: { type: String, required: true, trim: true },
+        target: { type: String, required: true, trim: true },
+      },
+    ],
+    completed_at: { type: Date, default: null },
   },
   { timestamps: { createdAt: "created_at", updatedAt: "updated_at" } }
 );

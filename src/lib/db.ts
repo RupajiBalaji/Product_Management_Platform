@@ -994,3 +994,45 @@ export async function postProjectDirectMessage(
     body: JSON.stringify({ content }),
   });
 }
+
+// ─── Phase 11: Retrospective & Project Completion ─────────────────────────────
+
+export async function completeProject(
+  projectId: string,
+  metrics?: Array<{ description: string; target: string; actualValue?: string; achieved?: boolean | null }>
+): Promise<{
+  success: boolean;
+  project: import("@/lib/types").Project;
+  retrospective: import("@/lib/types").Retrospective;
+  error?: string;
+  incompleteCount?: number;
+  incompleteTasks?: import("@/lib/types").IncompleteTaskItem[];
+}> {
+  return await apiFetch(`/api/projects/${projectId}/complete`, {
+    method: "POST",
+    body: JSON.stringify({ metrics }),
+  });
+}
+
+export async function getProjectRetrospective(
+  projectId: string
+): Promise<{
+  success: boolean;
+  retrospective: import("@/lib/types").Retrospective;
+}> {
+  return await apiFetch(`/api/projects/${projectId}/retrospective`);
+}
+
+export async function updateProjectSuccessMetrics(
+  projectId: string,
+  metrics: Array<{ description: string; target: string }>
+): Promise<{
+  success: boolean;
+  success_metrics: Array<{ description: string; target: string }>;
+}> {
+  return await apiFetch(`/api/projects/${projectId}/success-metrics`, {
+    method: "PATCH",
+    body: JSON.stringify({ metrics }),
+  });
+}
+

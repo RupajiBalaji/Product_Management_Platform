@@ -150,17 +150,34 @@ Traditional enterprise project management tools (Jira, Asana, Monday.com) are fr
 - **Permanent Archival Guarantee**:
   - Zero `DELETE` endpoints exist for channels, threads, or messages, strictly preserving full institutional discussion history for post-mortems and audits.
 
-### 12. 📅 Interactive Calendar Matrix GUI
+### 12. 🏁 Formal Project Completion & Retrospective Protocol (Phase 11)
+- **Rigorous Completion Preconditions**:
+  - `POST /api/projects/:id/complete` enforces that all scheduled tasks must be in `completed` status before final sign-off. Incomplete tasks block completion with HTTP 400 and a full enumerated list of unfinished work.
+  - Project status transitions to `completed` with timestamped `completed_at` recording and append-only `AuditLog` entry.
+- **Pure Logic Retrospective Engine (`server/lib/retrospectiveCalculator.js`)**:
+  - **Estimation Accuracy Metrics**: Overall project variance percentage, employee-level variance tracking, and domain-level accuracy breakdowns across DynamicRole domains (Backend, Frontend, QA, Architecture, Design).
+  - **Comprehensive Incident Telemetry**: Zero-default aggregation of unresolved 3-day partial work streaks, QA rejection loops, contested appeals, and directive changes.
+  - **Team Reliability & Quality Ledger**: On-time task delivery reliability percentages and first-pass Definition-of-Done approval quality rates calculated per contributor.
+- **AI-Synthesized Lessons Learned (`server/lib/lessonsGenerator.js`)**:
+  - Google Gemini AI synthesizes root causes, structural challenges, and estimation calibration recommendations into structured takeaway bullets, backed by graceful fallback on quota or network failure.
+- **Strict Retrospective Immutability (`server/models/Retrospective.js`)**:
+  - Once generated, Retrospectives are locked (`locked: true`). Zero `PUT` or `PATCH` routes exist on the retrospective endpoint (HTTP 404), ensuring post-mortem audit integrity.
+  - Role-based confidentiality: Hourly rates and financial cost figures are strictly scrubbed from retrospective views for non-Product Lead team members.
+- **Portfolio & Project Lifecycle Integration**:
+  - Executive Portfolio dashboard (`/pm/portfolio`) includes tabbed status filters (`ALL`, `Active`, `Completed`, `Frozen`, `Archived`) with visually distinct completion badges.
+  - Interactive Retrospective Dashboard embedded directly into the completed project view (`/pm/projects/$projectId`), featuring 4-card incident metrics, estimation variance tables, success metrics scorecard, AI lessons learned, and team performance telemetry.
+
+### 13. 📅 Interactive Calendar Matrix GUI
 - **Day-by-Day Contributor Matrix**: Interactive grid showing real-time contributor status (`Completed`, `In Progress`, `Blocked`, `No Log`).
 - **Instant Log Inspector Modal**: Click any log cell to inspect submitted deliverables, actual hours spent, blocker descriptions, and PR links.
 
-### 13. 👥 Employee 360 & Workload Capacity Engine
+### 14. 👥 Employee 360 & Workload Capacity Engine
 - **Capacity Gauge**: Visual circular gauge displaying real-time allocation percentage across all active projects.
 - **Multi-Project Team Allocation**: Add and remove contributors from projects with automatic role matching.
 - **High-Priority Project Guardrail**: Mark critical initiatives as **High Priority** so developers with multiple commitments know where to focus first.
 - **1-Click Dossier Export**: Generate and print clean executive performance dossiers.
 
-### 14. 🧠 5-Dimension AI Summary & Copilot Hub
+### 15. 🧠 5-Dimension AI Summary & Copilot Hub
 - **Single-Log & Multi-Log Summaries**: Synthesize daily standup entries into concise bulleted highlights.
 - **Project-Level & Sprint Velocity Insights**: Identify critical-path blockers and predict delivery variance.
 - **Employee 360 & Org-Wide Synthesis**: Executive health checks across engineering, design, and QA.
@@ -317,6 +334,9 @@ The repository is configured as a **Unified Web Service** on Render where Expres
 | `GET` | `/api/portfolio/utilization-heatmap` | Global workforce utilization heatmap across all active projects |
 | `GET` | `/api/projects/:id/budget` | Full budget burn detail & velocity projection (Product Lead only) |
 | `PATCH` | `/api/users/:id/cost-rate` | Update employee hourly cost rate with immutable AuditLog (Product Lead only) |
+| `PATCH` | `/api/projects/:id/success-metrics` | Define/update project target success metrics (Product Lead only) |
+| `POST` | `/api/projects/:id/complete` | Complete project, verify all tasks done, lock Retrospective (Product Lead only) |
+| `GET` | `/api/projects/:id/retrospective` | View immutable project retrospective (cost-scrubbed for non-leads) |
 | `POST` | `/api/logs` | Submit daily work log with blocker status |
 | `GET` | `/api/analytics/matrix/:projectId` | Aggregate day-by-day contributor calendar grid |
 | `POST` | `/api/ai/summarize` | Generate multi-dimension executive synthesis |

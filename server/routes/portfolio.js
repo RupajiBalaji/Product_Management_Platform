@@ -51,9 +51,9 @@ router.get("/dashboard", verifyToken, requireLeadOrArchitect, async (req, res) =
         totalUnresolvedSlippage + totalPendingAppeals + totalPendingClarifications,
     };
 
-    // 2. Fetch all active / in-review projects
+    // 2. Fetch projects (active, in-review, completed, frozen, archived)
     const projects = await Project.find({
-      status: { $in: ["active", "in-review"] },
+      status: { $in: ["active", "in-review", "completed", "frozen", "archived"] },
     })
       .sort({ created_at: -1 })
       .lean();

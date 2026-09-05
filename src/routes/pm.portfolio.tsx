@@ -57,6 +57,7 @@ function PortfolioDashboardPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedPriority, setSelectedPriority] = useState<string>("ALL");
   const [selectedHealth, setSelectedHealth] = useState<string>("ALL");
+  const [selectedStatus, setSelectedStatus] = useState<string>("ALL");
 
   const loadData = async (isManualRefresh = false) => {
     if (isManualRefresh) setRefreshing(true);
@@ -95,7 +96,9 @@ function PortfolioDashboardPage() {
       selectedPriority === "ALL" || proj.priority === selectedPriority;
     const matchesHealth =
       selectedHealth === "ALL" || proj.health.health === selectedHealth;
-    return matchesSearch && matchesPriority && matchesHealth;
+    const matchesStatus =
+      selectedStatus === "ALL" || proj.status === selectedStatus;
+    return matchesSearch && matchesPriority && matchesHealth && matchesStatus;
   });
 
   return (
@@ -249,6 +252,25 @@ function PortfolioDashboardPage() {
                 {h === "green" ? "🟢 Green" : h === "yellow" ? "🟡 Yellow" : h === "red" ? "🔴 Red" : "All"}
               </button>
             ))}
+
+            <div className="h-4 w-px bg-border mx-1" />
+
+            <div className="flex items-center gap-1 text-xs text-muted-foreground">
+              <span>Status:</span>
+            </div>
+            {["ALL", "active", "completed", "frozen", "archived"].map((st) => (
+              <button
+                key={st}
+                onClick={() => setSelectedStatus(st)}
+                className={`px-2.5 py-1 text-xs rounded-lg font-medium capitalize transition-colors ${
+                  selectedStatus === st
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-surface-elevated border border-border text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {st === "completed" ? "✓ Completed" : st}
+              </button>
+            ))}
           </div>
         </div>
 
@@ -257,7 +279,7 @@ function PortfolioDashboardPage() {
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-lg font-semibold text-foreground">
-                Active Projects & Health Portfolio ({filteredProjects.length})
+                Projects & Health Portfolio ({filteredProjects.length})
               </h2>
               <p className="text-xs text-muted-foreground">
                 Traffic-light governance status, pending action counters, and budget burn tracking
@@ -273,7 +295,7 @@ function PortfolioDashboardPage() {
           ) : filteredProjects.length === 0 ? (
             <div className="p-12 text-center text-muted-foreground border border-dashed border-border rounded-xl">
               <FolderKanban className="size-8 mx-auto mb-2 opacity-50" />
-              No active projects match the selected criteria.
+              No projects match the selected criteria.
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -283,21 +305,35 @@ function PortfolioDashboardPage() {
                 const healthConfig =
                   HEALTH_STATUS_CONFIG[proj.health.health as ProjectHealthStatus] ||
                   HEALTH_STATUS_CONFIG.green;
+                const isCompleted = proj.status === "completed";
 
                 return (
                   <div
                     key={proj.id}
-                    className="flex flex-col justify-between rounded-xl bg-gradient-to-b from-surface to-surface-elevated border border-border hover:border-primary/50 transition-all duration-200 shadow-xs hover:shadow-md p-5 group"
+                    className={`flex flex-col justify-between rounded-xl bg-gradient-to-b from-surface to-surface-elevated border transition-all duration-200 shadow-xs hover:shadow-md p-5 group ${
+                      isCompleted
+                        ? "border-emerald-500/40 hover:border-emerald-500/70"
+                        : "border-border hover:border-primary/50"
+                    }`}
                   >
                     <div>
-                      {/* Card Header: Priority & Health Badges */}
+                      {/* Card Header: Priority, Status & Health Badges */}
                       <div className="flex items-center justify-between gap-2 mb-3">
-                        <span
-                          className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold border ${priorityConfig.badge}`}
-                        >
-                          <span>{priorityConfig.icon}</span>
-                          <span>{priorityConfig.shortLabel}</span>
-                        </span>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span
+                            className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold border ${priorityConfig.badge}`}
+                          >
+                            <span>{priorityConfig.icon}</span>
+                            <span>{priorityConfig.shortLabel}</span>
+                          </span>
+
+                          {isCompleted && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold border border-emerald-500/40 bg-emerald-500/15 text-emerald-300">
+                              <CheckCircle2 className="size-3 text-emerald-400" />
+                              <span>COMPLETED</span>
+                            </span>
+                          )}
+                        </div>
 
                         <div className="flex items-center gap-1.5">
                           <span
