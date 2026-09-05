@@ -39,6 +39,14 @@ import {
   CheckCheck,
   Award,
   BookOpen,
+  FileText,
+  History,
+  RotateCcw,
+  FileDiff,
+  GitCommit,
+  ArrowUpRight,
+  Minus,
+  Check,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format, parseISO, differenceInDays } from "date-fns";
@@ -72,6 +80,15 @@ import {
   completeProject,
   getProjectRetrospective,
   updateProjectSuccessMetrics,
+  generateProjectPRD,
+  approveProjectPRD,
+  updatePRD,
+  getProjectPRDVersions,
+  requestChangePreview,
+  applyChangeTransaction,
+  getProjectChanges,
+  previewChangeRollback,
+  rollbackChangeTransaction,
 } from "@/lib/db";
 import type {
   Project,
@@ -89,6 +106,12 @@ import type {
   DirectMessageItem,
   Retrospective,
   IncompleteTaskItem,
+  PRDDocument,
+  PRDUserStory,
+  PRDDiffItem,
+  ChangeTransaction,
+  RollbackImpact,
+  ScopeChangePreview,
 } from "@/lib/types";
 import type { ProjectPriority, ProjectHealthStatus } from "@/lib/constants";
 import {
@@ -171,6 +194,66 @@ function ProjectDetailPage() {
   const [metricsEditorList, setMetricsEditorList] = useState<Array<{ description: string; target: string }>>([]);
   const [savingMetrics, setSavingMetrics] = useState(false);
 
+  // Phase 12: PRD Specification & Change Rollback State
+  const [prdVersions, setPrdVersions] = useState<PRDDocument[]>([]);
+  const [selectedPrdId, setSelectedPrdId] = useState<string | null>(null);
+  const [diffTargetPrdId, setDiffTargetPrdId] = useState<string | null>(null);
+  const [showDiffView, setShowDiffView] = useState(false);
+  const [generatingPrd, setGeneratingPrd] = useState(false);
+  const [approvingPrd, setApprovingPrd] = useState(false);
+  const [showEditPrdModal, setShowEditPrdModal] = useState(false);
+  const [editingPrdPayload, setEditingPrdPayload] = useState<Partial<PRDDocument> | null>(null);
+  const [savingPrdEdit, setSavingPrdEdit] = useState(false);
+  const [isMajorBump, setIsMajorBump] = useState(false);
+
+  // Change Log & Rollback State
+  const [changeLogs, setChangeLogs] = useState<ChangeTransaction[]>([]);
+  const [loadingChanges, setLoadingChanges] = useState(false);
+  const [showScopeChangeModal, setShowScopeChangeModal] = useState(false);
+  const [changeDescription, setChangeDescription] = useState("");
+  const [changeAddedTasks, setChangeAddedTasks] = useState<
+    Array<{ title: string; estimate_hours: number; assignee_ids: string[] }>
+  >([]);
+  const [changePreview, setChangePreview] = useState<ScopeChangePreview | null>(null);
+  const [requestingPreview, setRequestingPreview] = useState(false);
+  const [applyingChange, setApplyingChange] = useState(false);
+
+  // Rollback Modal State
+  const [showRollbackModal, setShowRollbackModal] = useState(false);
+  const [targetRollbackTx, setTargetRollbackTx] = useState<ChangeTransaction | null>(null);
+  const [rollbackImpact, setRollbackImpact] = useState<RollbackImpact | null>(null);
+  const [loadingRollbackPreview, setLoadingRollbackPreview] = useState(false);
+  const [confirmOrphaned, setConfirmOrphaned] = useState(false);
+  const [executingRollback, setExecutingRollback] = useState(false);
+
+  const loadPRDs = async () => {
+    try {
+      const res = await getProjectPRDVersions(projectId);
+      if (res && res.success) {
+        setPrdVersions(res.versions || []);
+        if (res.versions && res.versions.length > 0) {
+          setSelectedPrdId((prev) => prev || res.versions[0]._id || res.versions[0].id || null);
+        }
+      }
+    } catch {
+      setPrdVersions([]);
+    }
+  };
+
+  const loadChanges = async () => {
+    setLoadingChanges(true);
+    try {
+      const res = await getProjectChanges(projectId);
+      if (res && res.success) {
+        setChangeLogs(res.changes || []);
+      }
+    } catch {
+      setChangeLogs([]);
+    } finally {
+      setLoadingChanges(false);
+    }
+  };
+
   const loadRetrospective = async () => {
     setLoadingRetro(true);
     try {
@@ -240,6 +323,8 @@ function ProjectDetailPage() {
       await Promise.all([
         loadThread(),
         loadChannel(),
+        loadPRDs(),
+        loadChanges(),
         proj?.status === "completed" ? loadRetrospective() : Promise.resolve(),
       ]);
     } catch (err) {
@@ -282,6 +367,168 @@ function ProjectDetailPage() {
       toast.error(err.message || "Failed to complete project");
     } finally {
       setCompletingProject(false);
+    }
+  };
+
+  // Phase 12 PRD & Scope Change Handlers
+  const handleGeneratePRD = async () => {
+    setGeneratingPrd(true);
+    try {
+      const res = await generateProjectPRD(projectId);
+      if (res && res.success) {
+        toast.success(`PRD v${res.prd?.version} generated successfully!`);
+        await loadPRDs();
+        if (res.prd?._id || res.prd?.id) {
+          setSelectedPrdId(res.prd._id || res.prd.id);
+        }
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to generate PRD");
+    } finally {
+      setGeneratingPrd(false);
+    }
+  };
+
+  const handleApprovePRD = async () => {
+    setApprovingPrd(true);
+    try {
+      const res = await approveProjectPRD(projectId);
+      if (res && res.success) {
+        toast.success(`PRD v${res.prd?.version} formally approved!`);
+        await loadPRDs();
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to approve PRD");
+    } finally {
+      setApprovingPrd(false);
+    }
+  };
+
+  const handleOpenEditPrd = () => {
+    const currentPrd = prdVersions.find((v) => (v._id || v.id) === selectedPrdId) || prdVersions[0];
+    if (!currentPrd) return;
+    setEditingPrdPayload({
+      executive_summary: currentPrd.executive_summary || "",
+      scope_in: [...(currentPrd.scope_in || [])],
+      scope_out: [...(currentPrd.scope_out || [])],
+      technical_architecture: currentPrd.technical_architecture || "",
+      user_stories: currentPrd.user_stories ? JSON.parse(JSON.stringify(currentPrd.user_stories)) : [],
+    });
+    setIsMajorBump(false);
+    setShowEditPrdModal(true);
+  };
+
+  const handleSavePrdEdit = async () => {
+    if (!selectedPrdId || !editingPrdPayload) return;
+    setSavingPrdEdit(true);
+    try {
+      const res = await updatePRD(selectedPrdId, editingPrdPayload, isMajorBump);
+      if (res && res.success) {
+        toast.success(
+          `PRD updated! ${
+            res.action === "superseded_and_created"
+              ? `New version v${res.prd?.version} created.`
+              : "Draft saved."
+          }`
+        );
+        setShowEditPrdModal(false);
+        await loadPRDs();
+        if (res.prd?._id || res.prd?.id) {
+          setSelectedPrdId(res.prd._id || res.prd.id);
+        }
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update PRD");
+    } finally {
+      setSavingPrdEdit(false);
+    }
+  };
+
+  const handleRequestChangePreview = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!changeDescription.trim()) {
+      toast.error("Please provide a description of the proposed scope change.");
+      return;
+    }
+    setRequestingPreview(true);
+    try {
+      const res = await requestChangePreview(projectId, {
+        change_description: changeDescription.trim(),
+        added_tasks: changeAddedTasks.filter((t) => t.title.trim().length > 0),
+      });
+      if (res && res.success) {
+        setChangePreview(res);
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to calculate consequence preview");
+    } finally {
+      setRequestingPreview(false);
+    }
+  };
+
+  const handleApplyScopeChange = async () => {
+    if (!changeDescription.trim()) {
+      toast.error("Please provide a description of the proposed scope change.");
+      return;
+    }
+    setApplyingChange(true);
+    try {
+      const res = await applyChangeTransaction(projectId, {
+        change_description: changeDescription.trim(),
+        added_tasks: changeAddedTasks.filter((t) => t.title.trim().length > 0),
+        bump_version: true,
+      });
+      if (res && res.success) {
+        toast.success(`Scope change applied! PRD version updated to v${res.change?.prd_version_after}`);
+        setShowScopeChangeModal(false);
+        setChangeDescription("");
+        setChangeAddedTasks([]);
+        setChangePreview(null);
+        await Promise.all([load(), loadPRDs(), loadChanges()]);
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to apply scope change");
+    } finally {
+      setApplyingChange(false);
+    }
+  };
+
+  const handleOpenRollbackModal = async (tx: ChangeTransaction) => {
+    setTargetRollbackTx(tx);
+    setRollbackImpact(null);
+    setConfirmOrphaned(false);
+    setShowRollbackModal(true);
+    setLoadingRollbackPreview(true);
+    try {
+      const res = await previewChangeRollback(tx._id || tx.id);
+      if (res && res.success) {
+        setRollbackImpact(res.impact);
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to preview rollback");
+    } finally {
+      setLoadingRollbackPreview(false);
+    }
+  };
+
+  const handleExecuteRollback = async () => {
+    if (!targetRollbackTx) return;
+    setExecutingRollback(true);
+    try {
+      const res = await rollbackChangeTransaction(targetRollbackTx._id || targetRollbackTx.id, {
+        confirmed: confirmOrphaned,
+      });
+      if (res && res.success) {
+        toast.success(`Scope change rolled back! PRD reverted to v${res.current_prd_version}`);
+        setShowRollbackModal(false);
+        setTargetRollbackTx(null);
+        setRollbackImpact(null);
+        await Promise.all([load(), loadPRDs(), loadChanges()]);
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to execute rollback");
+    } finally {
+      setExecutingRollback(false);
     }
   };
 
@@ -619,6 +866,22 @@ function ProjectDetailPage() {
             <Users className="size-3.5" />
             <span>Manage Team ({assignedMembers.length})</span>
           </button>
+
+          <a
+            href="#prd-section"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-card px-3 py-2 text-xs font-semibold text-foreground hover:border-purple-500/50 transition-colors cursor-pointer"
+          >
+            <FileCode className="size-3.5 text-purple-400" />
+            <span>PRD {prdVersions.length > 0 ? `(v${prdVersions[0].version})` : ""}</span>
+          </a>
+
+          <a
+            href="#changes-section"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-card px-3 py-2 text-xs font-semibold text-foreground hover:border-amber-500/50 transition-colors cursor-pointer"
+          >
+            <RotateCcw className="size-3.5 text-amber-400" />
+            <span>Changes ({changeLogs.length})</span>
+          </a>
 
           <button
             onClick={() => {
@@ -1644,6 +1907,599 @@ function ProjectDetailPage() {
             )}
           </div>
 
+          {/* ─── Phase 12: PRD Specification & Semantic Versioning Panel ─── */}
+          {(() => {
+            const currentPrd =
+              prdVersions.find((v) => (v._id || v.id) === selectedPrdId) || prdVersions[0];
+            const targetPrd =
+              prdVersions.find((v) => (v._id || v.id) === diffTargetPrdId) ||
+              (prdVersions.length > 1 ? prdVersions[1] : null);
+
+            return (
+              <div
+                id="prd-section"
+                className="panel p-6 mb-6 border border-border bg-gradient-to-br from-surface to-surface-elevated shadow-xs space-y-4"
+              >
+                {/* Header */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="size-10 rounded-xl bg-purple-500/15 flex items-center justify-center text-purple-400">
+                      <FileCode className="size-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-display font-bold text-base text-foreground">
+                          Product Requirements Document (PRD)
+                        </h3>
+                        {currentPrd && (
+                          <span
+                            className={cn(
+                              "rounded-full px-2.5 py-0.5 text-[11px] font-mono font-bold border flex items-center gap-1",
+                              currentPrd.status === "approved"
+                                ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
+                                : currentPrd.status === "draft"
+                                ? "bg-amber-500/15 text-amber-300 border-amber-500/30"
+                                : "bg-muted text-muted-foreground border-border"
+                            )}
+                          >
+                            {currentPrd.status === "approved" ? (
+                              <CheckCircle2 className="size-3" />
+                            ) : currentPrd.status === "draft" ? (
+                              <FileEdit className="size-3" />
+                            ) : (
+                              <Lock className="size-3" />
+                            )}
+                            v{currentPrd.version} · {currentPrd.status.toUpperCase()}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Formal scope contract, semver versioning, and BDD Given/When/Then acceptance criteria.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Header Actions */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {prdVersions.length > 0 && (
+                      <div className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-2.5 py-1 text-xs">
+                        <History className="size-3.5 text-muted-foreground" />
+                        <span className="text-[11px] text-muted-foreground">Version:</span>
+                        <select
+                          value={selectedPrdId || (currentPrd?._id || currentPrd?.id || "")}
+                          onChange={(e) => setSelectedPrdId(e.target.value)}
+                          className="bg-transparent text-xs font-bold text-foreground outline-none cursor-pointer"
+                        >
+                          {prdVersions.map((v) => (
+                            <option key={v._id || v.id} value={v._id || v.id}>
+                              v{v.version} ({v.status})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    {prdVersions.length > 1 && (
+                      <button
+                        onClick={() => {
+                          if (!diffTargetPrdId) {
+                            const idx = prdVersions.findIndex(
+                              (v) => (v._id || v.id) === (currentPrd?._id || currentPrd?.id)
+                            );
+                            const next = prdVersions[idx + 1] || prdVersions[0];
+                            setDiffTargetPrdId(next._id || next.id || null);
+                          }
+                          setShowDiffView(!showDiffView);
+                        }}
+                        className={cn(
+                          "inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-semibold transition-colors cursor-pointer",
+                          showDiffView
+                            ? "border-primary bg-primary/10 text-primary"
+                            : "border-border bg-card text-foreground hover:bg-muted"
+                        )}
+                      >
+                        <GitCompare className="size-3.5" />
+                        <span>{showDiffView ? "View Specification" : "Compare Diffs"}</span>
+                      </button>
+                    )}
+
+                    {isProductLead && (
+                      <>
+                        {prdVersions.length === 0 ? (
+                          <button
+                            onClick={handleGeneratePRD}
+                            disabled={generatingPrd}
+                            className="inline-flex items-center gap-1.5 rounded-xl bg-purple-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-glow hover:bg-purple-500 transition-colors cursor-pointer disabled:opacity-50"
+                          >
+                            {generatingPrd ? (
+                              <Loader2 className="size-3.5 animate-spin" />
+                            ) : (
+                              <Sparkles className="size-3.5" />
+                            )}
+                            <span>Generate PRD with AI</span>
+                          </button>
+                        ) : (
+                          <>
+                            {currentPrd?.status === "draft" && (
+                              <button
+                                onClick={handleApprovePRD}
+                                disabled={approvingPrd}
+                                className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-glow hover:bg-emerald-500 transition-colors cursor-pointer disabled:opacity-50"
+                              >
+                                {approvingPrd ? (
+                                  <Loader2 className="size-3.5 animate-spin" />
+                                ) : (
+                                  <CheckCircle2 className="size-3.5" />
+                                )}
+                                <span>Approve PRD</span>
+                              </button>
+                            )}
+
+                            <button
+                              onClick={handleOpenEditPrd}
+                              className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer"
+                            >
+                              <FileEdit className="size-3.5 text-primary" />
+                              <span>
+                                {currentPrd?.status === "approved" ? "Edit & Bump Version" : "Edit Draft"}
+                              </span>
+                            </button>
+                          </>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* Body Content */}
+                {!currentPrd ? (
+                  <div className="py-12 text-center text-muted-foreground">
+                    <FileCode className="size-10 text-muted-foreground/30 mx-auto mb-2" />
+                    <p className="font-semibold text-foreground">No PRD Created Yet</p>
+                    <p className="text-xs text-muted-foreground mt-1 max-w-md mx-auto">
+                      Generate a comprehensive Product Requirements Document with BDD user stories, explicit scope boundaries, and technical architecture using Gemini AI.
+                    </p>
+                    {isProductLead && (
+                      <button
+                        onClick={handleGeneratePRD}
+                        disabled={generatingPrd}
+                        className="mt-4 inline-flex items-center gap-2 rounded-xl bg-purple-600 px-4 py-2 text-xs font-bold text-white shadow-glow hover:bg-purple-500 transition-colors cursor-pointer disabled:opacity-50"
+                      >
+                        {generatingPrd ? (
+                          <Loader2 className="size-4 animate-spin" />
+                        ) : (
+                          <Sparkles className="size-4" />
+                        )}
+                        <span>Generate Initial PRD (v1.0)</span>
+                      </button>
+                    )}
+                  </div>
+                ) : showDiffView ? (
+                  /* ─── Diff Comparison Mode ─── */
+                  <div className="space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-xl bg-surface-elevated/80 border border-border">
+                      <div className="text-xs font-semibold text-foreground flex items-center gap-2">
+                        <GitCompare className="size-4 text-primary" />
+                        <span>Comparing Version:</span>
+                        <span className="font-mono text-purple-400 font-bold">v{currentPrd.version}</span>
+                        <span className="text-muted-foreground">against</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={diffTargetPrdId || ""}
+                          onChange={(e) => setDiffTargetPrdId(e.target.value)}
+                          className="rounded-lg border border-border bg-card px-3 py-1 text-xs font-bold text-foreground outline-none"
+                        >
+                          {prdVersions
+                            .filter((v) => (v._id || v.id) !== (currentPrd._id || currentPrd.id))
+                            .map((v) => (
+                              <option key={v._id || v.id} value={v._id || v.id}>
+                                v{v.version} ({v.status})
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    {!targetPrd ? (
+                      <div className="p-6 text-center text-xs text-muted-foreground">
+                        Select an alternate version to view field diffs.
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {/* Executive Summary Diff */}
+                        <div className="panel p-4 bg-surface-elevated/40 border-border">
+                          <h4 className="text-xs font-semibold text-foreground uppercase tracking-wider mb-2">
+                            Executive Summary
+                          </h4>
+                          {currentPrd.executive_summary === targetPrd.executive_summary ? (
+                            <p className="text-xs text-muted-foreground italic">No changes.</p>
+                          ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                              <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-200">
+                                <span className="font-mono font-bold text-[10px] block text-rose-400 mb-1">
+                                  v{targetPrd.version} (Before)
+                                </span>
+                                {targetPrd.executive_summary}
+                              </div>
+                              <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-200">
+                                <span className="font-mono font-bold text-[10px] block text-emerald-400 mb-1">
+                                  v{currentPrd.version} (Current)
+                                </span>
+                                {currentPrd.executive_summary}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Scope In Diff */}
+                        <div className="panel p-4 bg-surface-elevated/40 border-border">
+                          <h4 className="text-xs font-semibold text-foreground uppercase tracking-wider mb-2">
+                            Scope In Boundaries Diff
+                          </h4>
+                          <div className="space-y-1.5 text-xs">
+                            {currentPrd.scope_in
+                              .filter((item) => !targetPrd.scope_in.includes(item))
+                              .map((added, idx) => (
+                                <div
+                                  key={idx}
+                                  className="flex items-center gap-2 p-2 rounded bg-emerald-500/10 text-emerald-300 font-medium"
+                                >
+                                  <span className="font-mono font-bold">+</span>
+                                  <span>{added}</span>
+                                </div>
+                              ))}
+                            {targetPrd.scope_in
+                              .filter((item) => !currentPrd.scope_in.includes(item))
+                              .map((removed, idx) => (
+                                <div
+                                  key={idx}
+                                  className="flex items-center gap-2 p-2 rounded bg-rose-500/10 text-rose-300 font-medium line-through"
+                                >
+                                  <span className="font-mono font-bold">-</span>
+                                  <span>{removed}</span>
+                                </div>
+                              ))}
+                            {currentPrd.scope_in
+                              .filter((item) => targetPrd.scope_in.includes(item))
+                              .map((unchanged, idx) => (
+                                <div key={idx} className="flex items-center gap-2 p-1.5 text-muted-foreground">
+                                  <span className="font-mono text-muted-foreground/60">·</span>
+                                  <span>{unchanged}</span>
+                                </div>
+                              ))}
+                          </div>
+                        </div>
+
+                        {/* Scope Out Diff */}
+                        <div className="panel p-4 bg-surface-elevated/40 border-border">
+                          <h4 className="text-xs font-semibold text-foreground uppercase tracking-wider mb-2">
+                            Scope Out Boundaries Diff
+                          </h4>
+                          <div className="space-y-1.5 text-xs">
+                            {currentPrd.scope_out
+                              .filter((item) => !targetPrd.scope_out.includes(item))
+                              .map((added, idx) => (
+                                <div
+                                  key={idx}
+                                  className="flex items-center gap-2 p-2 rounded bg-emerald-500/10 text-emerald-300 font-medium"
+                                >
+                                  <span className="font-mono font-bold">+</span>
+                                  <span>{added}</span>
+                                </div>
+                              ))}
+                            {targetPrd.scope_out
+                              .filter((item) => !currentPrd.scope_out.includes(item))
+                              .map((removed, idx) => (
+                                <div
+                                  key={idx}
+                                  className="flex items-center gap-2 p-2 rounded bg-rose-500/10 text-rose-300 font-medium line-through"
+                                >
+                                  <span className="font-mono font-bold">-</span>
+                                  <span>{removed}</span>
+                                </div>
+                              ))}
+                            {currentPrd.scope_out
+                              .filter((item) => targetPrd.scope_out.includes(item))
+                              .map((unchanged, idx) => (
+                                <div key={idx} className="flex items-center gap-2 p-1.5 text-muted-foreground">
+                                  <span className="font-mono text-muted-foreground/60">·</span>
+                                  <span>{unchanged}</span>
+                                </div>
+                              ))}
+                          </div>
+                        </div>
+
+                        {/* Technical Architecture Diff */}
+                        <div className="panel p-4 bg-surface-elevated/40 border-border">
+                          <h4 className="text-xs font-semibold text-foreground uppercase tracking-wider mb-2">
+                            Technical Architecture
+                          </h4>
+                          {currentPrd.technical_architecture === targetPrd.technical_architecture ? (
+                            <p className="text-xs text-muted-foreground italic">No architectural changes.</p>
+                          ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs font-mono">
+                              <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-300 whitespace-pre-wrap">
+                                <span className="font-bold text-[10px] block text-rose-400 mb-1">
+                                  v{targetPrd.version} Architecture:
+                                </span>
+                                {targetPrd.technical_architecture}
+                              </div>
+                              <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 whitespace-pre-wrap">
+                                <span className="font-bold text-[10px] block text-emerald-400 mb-1">
+                                  v{currentPrd.version} Architecture:
+                                </span>
+                                {currentPrd.technical_architecture}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  /* ─── Standard PRD View Mode ─── */
+                  <div className="space-y-6">
+                    {/* Executive Summary */}
+                    <div>
+                      <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                        Executive Summary
+                      </h4>
+                      <div className="panel p-4 bg-surface-elevated/40 border-border text-sm leading-relaxed text-foreground">
+                        {currentPrd.executive_summary}
+                      </div>
+                    </div>
+
+                    {/* Scope In & Scope Out Columns */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Scope In */}
+                      <div className="panel p-4 bg-emerald-500/5 border-emerald-500/30">
+                        <div className="flex items-center gap-2 mb-3 text-emerald-400 font-semibold text-xs uppercase tracking-wider">
+                          <CheckCircle2 className="size-4" />
+                          <span>Scope In (Deliverables Included)</span>
+                        </div>
+                        <ul className="space-y-2 text-xs text-foreground">
+                          {currentPrd.scope_in && currentPrd.scope_in.length > 0 ? (
+                            currentPrd.scope_in.map((item, idx) => (
+                              <li key={idx} className="flex items-start gap-2">
+                                <span className="size-1.5 rounded-full bg-emerald-400 mt-1.5 shrink-0" />
+                                <span>{item}</span>
+                              </li>
+                            ))
+                          ) : (
+                            <li className="text-muted-foreground italic">No in-scope items recorded.</li>
+                          )}
+                        </ul>
+                      </div>
+
+                      {/* Scope Out */}
+                      <div className="panel p-4 bg-rose-500/5 border-rose-500/30">
+                        <div className="flex items-center gap-2 mb-3 text-rose-400 font-semibold text-xs uppercase tracking-wider">
+                          <X className="size-4" />
+                          <span>Scope Out (Explicit Non-Goals)</span>
+                        </div>
+                        <ul className="space-y-2 text-xs text-foreground">
+                          {currentPrd.scope_out && currentPrd.scope_out.length > 0 ? (
+                            currentPrd.scope_out.map((item, idx) => (
+                              <li key={idx} className="flex items-start gap-2">
+                                <span className="size-1.5 rounded-full bg-rose-400 mt-1.5 shrink-0" />
+                                <span>{item}</span>
+                              </li>
+                            ))
+                          ) : (
+                            <li className="text-muted-foreground italic">No non-goals recorded.</li>
+                          )}
+                        </ul>
+                      </div>
+                    </div>
+
+                    {/* BDD User Stories */}
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                          BDD User Stories & Acceptance Criteria ({currentPrd.user_stories?.length || 0})
+                        </h4>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {currentPrd.user_stories && currentPrd.user_stories.length > 0 ? (
+                          currentPrd.user_stories.map((us, idx) => (
+                            <div
+                              key={idx}
+                              className="panel p-4 bg-surface-elevated/40 border-border/80 space-y-3"
+                            >
+                              <div className="text-xs font-bold text-foreground leading-snug">
+                                {us.story}
+                              </div>
+                              <div className="space-y-1.5 font-mono text-[11px]">
+                                <div className="p-2 rounded bg-background/80 border border-border/60">
+                                  <span className="font-bold text-indigo-400 mr-1.5">GIVEN:</span>
+                                  <span className="text-muted-foreground">{us.given}</span>
+                                </div>
+                                <div className="p-2 rounded bg-background/80 border border-border/60">
+                                  <span className="font-bold text-amber-400 mr-1.5">WHEN:</span>
+                                  <span className="text-muted-foreground">{us.when}</span>
+                                </div>
+                                <div className="p-2 rounded bg-background/80 border border-border/60">
+                                  <span className="font-bold text-emerald-400 mr-1.5">THEN:</span>
+                                  <span className="text-foreground">{us.then}</span>
+                                </div>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="p-4 text-xs text-muted-foreground italic col-span-2">
+                            No user stories specified.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Technical Architecture */}
+                    {currentPrd.technical_architecture && (
+                      <div>
+                        <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                          Technical Architecture & System Design
+                        </h4>
+                        <div className="panel p-4 bg-surface-elevated/50 border-border font-mono text-xs text-foreground leading-relaxed whitespace-pre-wrap">
+                          {currentPrd.technical_architecture}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* ─── Phase 12: Scope Change Transactions & Governance Log ─── */}
+          <div
+            id="changes-section"
+            className="panel p-6 mb-6 border border-border bg-gradient-to-br from-surface to-surface-elevated shadow-xs space-y-4"
+          >
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border pb-4">
+              <div className="flex items-center gap-3">
+                <div className="size-10 rounded-xl bg-amber-500/15 flex items-center justify-center text-amber-400">
+                  <RotateCcw className="size-5" />
+                </div>
+                <div>
+                  <h3 className="font-display font-bold text-base text-foreground">
+                    Scope Change Transactions & Governance Log
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    Formal delta tracking, automated consequence calculation, and CEO/Product Lead rollback engine.
+                  </p>
+                </div>
+              </div>
+
+              {isProductLead && (
+                <button
+                  onClick={() => {
+                    setChangeDescription("");
+                    setChangeAddedTasks([]);
+                    setChangePreview(null);
+                    setShowScopeChangeModal(true);
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3.5 py-1.5 text-xs font-bold text-primary-foreground shadow-glow hover:bg-primary/90 transition-colors cursor-pointer"
+                >
+                  <Plus className="size-3.5" />
+                  <span>Request Scope Change</span>
+                </button>
+              )}
+            </div>
+
+            {loadingChanges ? (
+              <div className="py-8 text-center text-xs text-muted-foreground">
+                <Loader2 className="size-5 animate-spin mx-auto mb-2 text-primary" />
+                Loading change transactions...
+              </div>
+            ) : changeLogs.length === 0 ? (
+              <div className="p-8 text-center text-xs text-muted-foreground">
+                No formal scope changes requested yet. All deliverables remain aligned with initial baseline.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {changeLogs.map((tx) => {
+                  const isApplied = tx.status === "applied";
+                  return (
+                    <div
+                      key={tx._id || tx.id}
+                      className={cn(
+                        "panel p-4 border-l-4 transition-all flex flex-col md:flex-row md:items-center justify-between gap-4",
+                        isApplied
+                          ? "border-l-emerald-500 bg-surface-elevated/40"
+                          : "border-l-muted bg-muted/20 opacity-85"
+                      )}
+                    >
+                      <div className="min-w-0 flex-1 space-y-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span
+                            className={cn(
+                              "rounded-full px-2 py-0.5 text-[10px] font-mono font-bold border",
+                              isApplied
+                                ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
+                                : "bg-muted text-muted-foreground border-border line-through"
+                            )}
+                          >
+                            {isApplied ? "APPLIED" : "ROLLED BACK"}
+                          </span>
+
+                          <span className="rounded-full border border-border bg-card px-2 py-0.5 text-[10px] font-mono font-bold text-purple-400">
+                            v{tx.prd_version_before} → v{tx.prd_version_after}
+                          </span>
+
+                          <span className="text-[11px] text-muted-foreground">
+                            Applied{" "}
+                            {tx.applied_at
+                              ? format(parseISO(tx.applied_at), "MMM d, yyyy · h:mm a")
+                              : "Recently"}
+                          </span>
+                        </div>
+
+                        <p className="text-xs font-semibold text-foreground">
+                          {tx.change_description}
+                        </p>
+
+                        {/* Consequence Badges */}
+                        <div className="flex flex-wrap items-center gap-2 pt-1 text-[10px] font-mono">
+                          <span className="rounded-md border border-border bg-card px-2 py-0.5 text-foreground">
+                            Δ Hours:{" "}
+                            <strong className="text-amber-400">
+                              {tx.consequence_summary?.deltaHours > 0
+                                ? `+${tx.consequence_summary.deltaHours}`
+                                : tx.consequence_summary?.deltaHours || 0}
+                              h
+                            </strong>
+                          </span>
+                          <span className="rounded-md border border-border bg-card px-2 py-0.5 text-foreground">
+                            Δ Schedule:{" "}
+                            <strong className="text-amber-400">
+                              {tx.consequence_summary?.deltaDays > 0
+                                ? `+${tx.consequence_summary.deltaDays}`
+                                : tx.consequence_summary?.deltaDays || 0}
+                              d
+                            </strong>
+                          </span>
+                          <span className="rounded-md border border-border bg-card px-2 py-0.5 text-foreground">
+                            Δ Cost:{" "}
+                            <strong className="text-emerald-400">
+                              ${(tx.consequence_summary?.deltaCost || 0).toLocaleString()}
+                            </strong>
+                          </span>
+                          <span className="rounded-md border border-border bg-card px-2 py-0.5 text-muted-foreground">
+                            Added Tasks: {tx.tasks_added?.length || 0}
+                          </span>
+                        </div>
+
+                        {tx.status === "rolled_back" && (
+                          <div className="text-[11px] text-muted-foreground italic">
+                            Rolled back{" "}
+                            {tx.rolled_back_at
+                              ? format(parseISO(tx.rolled_back_at), "MMM d, yyyy")
+                              : ""}
+                            {tx.rollback_blocked_reason
+                              ? ` · Reason: ${tx.rollback_blocked_reason}`
+                              : ""}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Action Button */}
+                      {isApplied && isProductLead && (
+                        <button
+                          onClick={() => handleOpenRollbackModal(tx)}
+                          className="inline-flex items-center gap-1.5 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-1.5 text-xs font-semibold text-rose-300 hover:bg-rose-500/20 transition-colors cursor-pointer shrink-0"
+                        >
+                          <RotateCcw className="size-3.5" />
+                          <span>Rollback This Change</span>
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
           {/* Tasks Section */}
           <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
             <div>
@@ -2224,6 +3080,60 @@ function ProjectDetailPage() {
           onChangeMetrics={setMetricsEditorList}
           onClose={() => setShowMetricsModal(false)}
           onSubmit={handleSaveMetrics}
+        />
+      )}
+
+      {/* Phase 12: Edit PRD Modal */}
+      {showEditPrdModal && editingPrdPayload && (
+        <EditPRDModal
+          payload={editingPrdPayload}
+          isMajor={isMajorBump}
+          isCurrentApproved={
+            (prdVersions.find((v) => (v._id || v.id) === selectedPrdId) || prdVersions[0])?.status === "approved"
+          }
+          saving={savingPrdEdit}
+          onChangePayload={setEditingPrdPayload}
+          onChangeIsMajor={setIsMajorBump}
+          onClose={() => setShowEditPrdModal(false)}
+          onSave={handleSavePrdEdit}
+        />
+      )}
+
+      {/* Phase 12: Scope Change Request Modal */}
+      {showScopeChangeModal && (
+        <ScopeChangeModal
+          description={changeDescription}
+          tasks={changeAddedTasks}
+          preview={changePreview}
+          requestingPreview={requestingPreview}
+          applyingChange={applyingChange}
+          allEmployees={allEmployees}
+          onChangeDescription={setChangeDescription}
+          onChangeTasks={setChangeAddedTasks}
+          onRequestPreview={handleRequestChangePreview}
+          onApplyChange={handleApplyScopeChange}
+          onClose={() => {
+            setShowScopeChangeModal(false);
+            setChangePreview(null);
+          }}
+        />
+      )}
+
+      {/* Phase 12: Rollback Confirmation Modal */}
+      {showRollbackModal && targetRollbackTx && (
+        <RollbackConfirmationModal
+          tx={targetRollbackTx}
+          impact={rollbackImpact}
+          loading={loadingRollbackPreview}
+          executing={executingRollback}
+          confirmedOrphaned={confirmOrphaned}
+          onToggleConfirmOrphaned={setConfirmOrphaned}
+          onClose={() => {
+            setShowRollbackModal(false);
+            setTargetRollbackTx(null);
+            setRollbackImpact(null);
+          }}
+          onConfirm={handleExecuteRollback}
         />
       )}
     </AppShell>
@@ -3455,6 +4365,648 @@ function SuccessMetricsModal({
             </div>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+function EditPRDModal({
+  payload,
+  isMajor,
+  isCurrentApproved,
+  saving,
+  onChangePayload,
+  onChangeIsMajor,
+  onClose,
+  onSave,
+}: {
+  payload: Partial<PRDDocument>;
+  isMajor: boolean;
+  isCurrentApproved: boolean;
+  saving: boolean;
+  onChangePayload: (p: Partial<PRDDocument>) => void;
+  onChangeIsMajor: (m: boolean) => void;
+  onClose: () => void;
+  onSave: () => void;
+}) {
+  const [scopeInText, setScopeInText] = useState((payload.scope_in || []).join("\n"));
+  const [scopeOutText, setScopeOutText] = useState((payload.scope_out || []).join("\n"));
+
+  const handleApplyTexts = () => {
+    onChangePayload({
+      ...payload,
+      scope_in: scopeInText
+        .split("\n")
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0),
+      scope_out: scopeOutText
+        .split("\n")
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0),
+    });
+  };
+
+  const handleAddUserStory = () => {
+    const stories = [...(payload.user_stories || [])];
+    stories.push({
+      story: "As a [user role], I want [feature], so that [business value]",
+      given: "prerequisites or initial system context",
+      when: "an event occurs or user takes an action",
+      then: "expected outcome and telemetry",
+    });
+    onChangePayload({ ...payload, user_stories: stories });
+  };
+
+  const handleUpdateUserStory = (
+    index: number,
+    field: "story" | "given" | "when" | "then",
+    val: string
+  ) => {
+    const stories = [...(payload.user_stories || [])];
+    stories[index] = { ...stories[index], [field]: val };
+    onChangePayload({ ...payload, user_stories: stories });
+  };
+
+  const handleRemoveUserStory = (index: number) => {
+    const stories = (payload.user_stories || []).filter((_, i) => i !== index);
+    onChangePayload({ ...payload, user_stories: stories });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
+      <div className="panel w-full max-w-3xl p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between border-b border-border pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="size-8 rounded-lg bg-purple-500/15 flex items-center justify-center text-purple-400">
+              <FileEdit className="size-4" />
+            </div>
+            <div>
+              <h3 className="font-display font-bold text-base text-foreground">
+                {isCurrentApproved ? "Edit Approved PRD (Creates New Semver Version)" : "Edit Draft PRD"}
+              </h3>
+              <p className="text-[11px] text-muted-foreground">
+                {isCurrentApproved
+                  ? "Changes to an approved PRD preserve history. A field diff will be computed and the current version superseded."
+                  : "Editing working draft specification before executive approval."}
+              </p>
+            </div>
+          </div>
+          <button onClick={onClose} className="rounded-lg p-1 text-muted-foreground hover:bg-muted cursor-pointer">
+            <X className="size-4" />
+          </button>
+        </div>
+
+        {isCurrentApproved && (
+          <div className="p-3 rounded-xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-between gap-3 text-xs">
+            <div>
+              <span className="font-bold text-foreground block">Semantic Version Increment</span>
+              <span className="text-muted-foreground text-[11px]">
+                {isMajor
+                  ? "Major bump (e.g. v1.x → v2.0): Fundamental architectural shift or complete scope rewrite."
+                  : "Minor bump (e.g. v1.0 → v1.1): Incremental requirements refinement or additional user stories."}
+              </span>
+            </div>
+            <label className="flex items-center gap-2 font-semibold text-foreground cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isMajor}
+                onChange={(e) => onChangeIsMajor(e.target.checked)}
+                className="rounded border-border"
+              />
+              <span>Major Bump?</span>
+            </label>
+          </div>
+        )}
+
+        <div className="space-y-4 text-xs">
+          {/* Executive Summary */}
+          <div>
+            <label className="text-[11px] font-semibold text-foreground block mb-1">
+              Executive Summary
+            </label>
+            <textarea
+              value={payload.executive_summary || ""}
+              onChange={(e) => onChangePayload({ ...payload, executive_summary: e.target.value })}
+              rows={3}
+              placeholder="High-level product vision, business goal, and problem statement..."
+              className="w-full rounded-xl border border-border bg-card p-3 text-xs text-foreground outline-none focus:border-primary"
+            />
+          </div>
+
+          {/* Scope In & Scope Out */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="text-[11px] font-semibold text-emerald-400 block mb-1">
+                Scope In (One deliverable per line)
+              </label>
+              <textarea
+                value={scopeInText}
+                onChange={(e) => {
+                  setScopeInText(e.target.value);
+                  onChangePayload({
+                    ...payload,
+                    scope_in: e.target.value.split("\n").map((s) => s.trim()).filter(Boolean),
+                  });
+                }}
+                rows={5}
+                placeholder="User authentication&#10;Stripe payments&#10;Audit logging"
+                className="w-full rounded-xl border border-emerald-500/30 bg-card p-3 text-xs text-foreground outline-none focus:border-emerald-500 font-mono"
+              />
+            </div>
+            <div>
+              <label className="text-[11px] font-semibold text-rose-400 block mb-1">
+                Scope Out / Non-Goals (One per line)
+              </label>
+              <textarea
+                value={scopeOutText}
+                onChange={(e) => {
+                  setScopeOutText(e.target.value);
+                  onChangePayload({
+                    ...payload,
+                    scope_out: e.target.value.split("\n").map((s) => s.trim()).filter(Boolean),
+                  });
+                }}
+                rows={5}
+                placeholder="Mobile apps&#10;Multi-currency support&#10;Real-time audio"
+                className="w-full rounded-xl border border-rose-500/30 bg-card p-3 text-xs text-foreground outline-none focus:border-rose-500 font-mono"
+              />
+            </div>
+          </div>
+
+          {/* Technical Architecture */}
+          <div>
+            <label className="text-[11px] font-semibold text-foreground block mb-1">
+              Technical Architecture & System Design
+            </label>
+            <textarea
+              value={payload.technical_architecture || ""}
+              onChange={(e) => onChangePayload({ ...payload, technical_architecture: e.target.value })}
+              rows={4}
+              placeholder="Component diagrams, API interfaces, schema considerations, third-party dependencies..."
+              className="w-full rounded-xl border border-border bg-card p-3 text-xs text-foreground font-mono outline-none focus:border-primary"
+            />
+          </div>
+
+          {/* BDD User Stories */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-[11px] font-semibold text-foreground">
+                BDD User Stories ({payload.user_stories?.length || 0})
+              </label>
+              <button
+                type="button"
+                onClick={handleAddUserStory}
+                className="text-[11px] text-primary font-semibold hover:underline flex items-center gap-1 cursor-pointer"
+              >
+                <Plus className="size-3" /> Add User Story
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              {(payload.user_stories || []).map((us, idx) => (
+                <div key={idx} className="p-3 rounded-xl border border-border bg-surface-elevated/40 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <input
+                      type="text"
+                      value={us.story}
+                      onChange={(e) => handleUpdateUserStory(idx, "story", e.target.value)}
+                      placeholder="User Story statement..."
+                      className="flex-1 rounded-lg border border-border bg-card px-2.5 py-1 text-xs font-semibold text-foreground outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveUserStory(idx)}
+                      className="text-muted-foreground hover:text-rose-400 p-1 cursor-pointer"
+                    >
+                      <Trash2 className="size-3.5" />
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2 font-mono text-[11px]">
+                    <input
+                      type="text"
+                      value={us.given}
+                      onChange={(e) => handleUpdateUserStory(idx, "given", e.target.value)}
+                      placeholder="GIVEN..."
+                      className="rounded-lg border border-border bg-card px-2 py-1 text-foreground outline-none"
+                    />
+                    <input
+                      type="text"
+                      value={us.when}
+                      onChange={(e) => handleUpdateUserStory(idx, "when", e.target.value)}
+                      placeholder="WHEN..."
+                      className="rounded-lg border border-border bg-card px-2 py-1 text-foreground outline-none"
+                    />
+                    <input
+                      type="text"
+                      value={us.then}
+                      onChange={(e) => handleUpdateUserStory(idx, "then", e.target.value)}
+                      placeholder="THEN..."
+                      className="rounded-lg border border-border bg-card px-2 py-1 text-foreground outline-none"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end gap-2 pt-3 border-t border-border">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl border border-border bg-card px-3.5 py-1.5 text-xs font-semibold text-foreground hover:bg-muted cursor-pointer"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              handleApplyTexts();
+              onSave();
+            }}
+            disabled={saving}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-purple-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-purple-500 shadow-glow transition-colors cursor-pointer disabled:opacity-50"
+          >
+            {saving ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
+            <span>{isCurrentApproved ? "Save & Bump Semver" : "Save Draft"}</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ScopeChangeModal({
+  description,
+  tasks,
+  preview,
+  requestingPreview,
+  applyingChange,
+  allEmployees,
+  onChangeDescription,
+  onChangeTasks,
+  onRequestPreview,
+  onApplyChange,
+  onClose,
+}: {
+  description: string;
+  tasks: Array<{ title: string; estimate_hours: number; assignee_ids: string[] }>;
+  preview: ScopeChangePreview | null;
+  requestingPreview: boolean;
+  applyingChange: boolean;
+  allEmployees: UserProfile[];
+  onChangeDescription: (d: string) => void;
+  onChangeTasks: (
+    t: Array<{ title: string; estimate_hours: number; assignee_ids: string[] }>
+  ) => void;
+  onRequestPreview: () => void;
+  onApplyChange: () => void;
+  onClose: () => void;
+}) {
+  const handleAddTask = () => {
+    onChangeTasks([...tasks, { title: "", estimate_hours: 8, assignee_ids: [] }]);
+  };
+
+  const handleUpdateTask = (
+    index: number,
+    field: "title" | "estimate_hours" | "assignee_ids",
+    val: any
+  ) => {
+    const updated = [...tasks];
+    updated[index] = { ...updated[index], [field]: val };
+    onChangeTasks(updated);
+  };
+
+  const handleRemoveTask = (index: number) => {
+    onChangeTasks(tasks.filter((_, i) => i !== index));
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
+      <div className="panel w-full max-w-2xl p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between border-b border-border pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="size-8 rounded-lg bg-amber-500/15 flex items-center justify-center text-amber-400">
+              <RotateCcw className="size-4" />
+            </div>
+            <div>
+              <h3 className="font-display font-bold text-base text-foreground">
+                Request Formal Scope Change
+              </h3>
+              <p className="text-[11px] text-muted-foreground">
+                Calculates live schedule, financial delta, and bumps PRD semver before applying.
+              </p>
+            </div>
+          </div>
+          <button onClick={onClose} className="rounded-lg p-1 text-muted-foreground hover:bg-muted cursor-pointer">
+            <X className="size-4" />
+          </button>
+        </div>
+
+        <div className="space-y-4 text-xs">
+          <div>
+            <label className="text-[11px] font-semibold text-foreground block mb-1">
+              Change Request Description
+            </label>
+            <textarea
+              value={description}
+              onChange={(e) => onChangeDescription(e.target.value)}
+              rows={3}
+              placeholder="e.g. Add Apple Pay / Google Pay gateway integration with 3DS verification..."
+              className="w-full rounded-xl border border-border bg-card p-3 text-xs text-foreground outline-none focus:border-primary"
+            />
+          </div>
+
+          {/* Added Tasks */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-[11px] font-semibold text-foreground">
+                Tasks to Add / Schedule ({tasks.length})
+              </label>
+              <button
+                type="button"
+                onClick={handleAddTask}
+                className="text-[11px] text-primary font-semibold hover:underline flex items-center gap-1 cursor-pointer"
+              >
+                <Plus className="size-3" /> Add Task
+              </button>
+            </div>
+
+            {tasks.length === 0 ? (
+              <p className="text-xs text-muted-foreground italic p-3 rounded-lg bg-surface-elevated/40 border border-border">
+                No new tasks specified. (Scope change will still calculate PRD delta).
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {tasks.map((task, idx) => (
+                  <div key={idx} className="flex flex-wrap items-center gap-2 p-2.5 rounded-lg border border-border bg-card">
+                    <input
+                      type="text"
+                      value={task.title}
+                      onChange={(e) => handleUpdateTask(idx, "title", e.target.value)}
+                      placeholder="Task title..."
+                      className="flex-1 min-w-[160px] rounded-lg border border-border bg-background px-2 py-1 text-xs text-foreground outline-none"
+                    />
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="number"
+                        value={task.estimate_hours}
+                        onChange={(e) => handleUpdateTask(idx, "estimate_hours", Number(e.target.value) || 0)}
+                        placeholder="Hours"
+                        min={0}
+                        className="w-16 rounded-lg border border-border bg-background px-2 py-1 text-xs text-foreground outline-none font-mono"
+                      />
+                      <span className="text-[10px] text-muted-foreground">hrs</span>
+                    </div>
+                    <select
+                      value={task.assignee_ids[0] || ""}
+                      onChange={(e) => handleUpdateTask(idx, "assignee_ids", e.target.value ? [e.target.value] : [])}
+                      className="rounded-lg border border-border bg-background px-2 py-1 text-xs text-foreground outline-none"
+                    >
+                      <option value="">-- Assignee --</option>
+                      {allEmployees.map((emp) => (
+                        <option key={emp.id} value={emp.id}>
+                          {emp.full_name}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveTask(idx)}
+                      className="p-1 text-muted-foreground hover:text-rose-400 cursor-pointer"
+                    >
+                      <Trash2 className="size-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Calculate Preview Button */}
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={onRequestPreview}
+              disabled={requestingPreview || !description.trim()}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3.5 py-1.5 text-xs font-semibold text-amber-300 hover:bg-amber-500/20 transition-colors cursor-pointer disabled:opacity-50"
+            >
+              {requestingPreview ? <Loader2 className="size-3.5 animate-spin" /> : <Calculator className="size-3.5" />}
+              <span>Calculate Impact Preview</span>
+            </button>
+          </div>
+
+          {/* Preview Consequence Panel */}
+          {preview && (
+            <div className="p-4 rounded-xl border border-amber-500/40 bg-amber-500/5 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="font-display font-bold text-xs text-foreground flex items-center gap-1.5">
+                  <CheckCircle2 className="size-3.5 text-amber-400" />
+                  Consequence Impact Analysis
+                </span>
+                <span className="text-[11px] font-mono font-bold text-purple-400">
+                  PRD: v{preview.current_version} → v{preview.next_version}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2 text-center font-mono text-xs">
+                <div className="p-2 rounded bg-card border border-border">
+                  <span className="text-[10px] text-muted-foreground block">Hours Delta</span>
+                  <span className="font-bold text-amber-400">+{preview.consequence_summary?.deltaHours || 0}h</span>
+                </div>
+                <div className="p-2 rounded bg-card border border-border">
+                  <span className="text-[10px] text-muted-foreground block">Schedule Delta</span>
+                  <span className="font-bold text-amber-400">+{preview.consequence_summary?.deltaDays || 0} days</span>
+                </div>
+                <div className="p-2 rounded bg-card border border-border">
+                  <span className="text-[10px] text-muted-foreground block">Cost Delta</span>
+                  <span className="font-bold text-emerald-400">+${(preview.consequence_summary?.deltaCost || 0).toLocaleString()}</span>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center justify-end gap-2 pt-3 border-t border-border">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl border border-border bg-card px-3.5 py-1.5 text-xs font-semibold text-foreground hover:bg-muted cursor-pointer"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onApplyChange}
+            disabled={applyingChange || !description.trim()}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-4 py-1.5 text-xs font-bold text-primary-foreground hover:bg-primary/90 shadow-glow transition-colors cursor-pointer disabled:opacity-50"
+          >
+            {applyingChange ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
+            <span>Apply Scope Change</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RollbackConfirmationModal({
+  tx,
+  impact,
+  loading,
+  executing,
+  confirmedOrphaned,
+  onToggleConfirmOrphaned,
+  onClose,
+  onConfirm,
+}: {
+  tx: ChangeTransaction;
+  impact: RollbackImpact | null;
+  loading: boolean;
+  executing: boolean;
+  confirmedOrphaned: boolean;
+  onToggleConfirmOrphaned: (c: boolean) => void;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
+      <div className="panel w-full max-w-xl p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between border-b border-border pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="size-8 rounded-lg bg-rose-500/15 flex items-center justify-center text-rose-400">
+              <RotateCcw className="size-4" />
+            </div>
+            <div>
+              <h3 className="font-display font-bold text-base text-foreground">
+                Rollback Scope Change
+              </h3>
+              <p className="text-[11px] text-muted-foreground">
+                Transaction: v{tx.prd_version_before} → v{tx.prd_version_after}
+              </p>
+            </div>
+          </div>
+          <button onClick={onClose} className="rounded-lg p-1 text-muted-foreground hover:bg-muted cursor-pointer">
+            <X className="size-4" />
+          </button>
+        </div>
+
+        <div className="space-y-3 text-xs">
+          <div className="p-3 rounded-xl bg-surface-elevated/50 border border-border">
+            <span className="text-[10px] text-muted-foreground uppercase tracking-wider block mb-1">
+              Change Description
+            </span>
+            <p className="font-medium text-foreground">{tx.change_description}</p>
+          </div>
+
+          {loading ? (
+            <div className="py-8 text-center text-muted-foreground">
+              <Loader2 className="size-5 animate-spin mx-auto mb-2 text-primary" />
+              Validating dependency tree and checking for diverged tasks...
+            </div>
+          ) : !impact ? (
+            <p className="text-muted-foreground italic">Unable to load rollback preview.</p>
+          ) : !impact.canRollback ? (
+            /* Hard Blocker */
+            <div className="p-4 rounded-xl border border-rose-500/40 bg-rose-500/10 space-y-2">
+              <div className="flex items-center gap-2 text-rose-400 font-bold text-xs">
+                <AlertTriangle className="size-4" />
+                <span>Rollback Blocked (Conflicting State)</span>
+              </div>
+              <p className="text-[11px] text-rose-200 leading-relaxed">
+                This change cannot be safely rolled back because downstream work has diverged or newer active changes conflict with modified tasks.
+              </p>
+              {impact.conflictingTasks && impact.conflictingTasks.length > 0 && (
+                <div className="space-y-1 pt-1 font-mono text-[10px]">
+                  {impact.conflictingTasks.map((t, idx) => (
+                    <div key={idx} className="p-1.5 rounded bg-background/80 border border-rose-500/30 text-rose-300">
+                      <strong>Task {t.taskId}:</strong> {t.reason}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            /* Allowed Rollback */
+            <div className="space-y-3">
+              {impact.orphanedWork ? (
+                <div className="p-4 rounded-xl border border-amber-500/40 bg-amber-500/10 space-y-2.5">
+                  <div className="flex items-center gap-2 text-amber-400 font-bold text-xs">
+                    <AlertTriangle className="size-4" />
+                    <span>Warning: Orphaned Completed Work Detected</span>
+                  </div>
+                  <p className="text-[11px] text-amber-200 leading-relaxed">
+                    Some tasks created as part of this scope change have already been marked completed. Rolling back will permanently remove these tasks and discard their completed state.
+                  </p>
+                  {impact.orphanedTasks && impact.orphanedTasks.length > 0 && (
+                    <div className="space-y-1 font-mono text-[10px]">
+                      {impact.orphanedTasks.map((t, idx) => (
+                        <div key={idx} className="p-1.5 rounded bg-background/80 border border-amber-500/30 text-amber-300">
+                          {t.title} ({t.status})
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <label className="flex items-center gap-2 pt-2 border-t border-amber-500/30 text-foreground font-semibold cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={confirmedOrphaned}
+                      onChange={(e) => onToggleConfirmOrphaned(e.target.checked)}
+                      className="rounded border-amber-500/40"
+                    />
+                    <span>I understand and explicitly confirm removing completed work.</span>
+                  </label>
+                </div>
+              ) : (
+                <div className="p-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 space-y-1">
+                  <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs">
+                    <CheckCircle2 className="size-4" />
+                    <span>Safe Rollback Available</span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    All added tasks are untouched or unstarted and will be cleanly removed. Any modified tasks will revert to their prior state, and the PRD version will be restored.
+                  </p>
+                </div>
+              )}
+
+              <div className="p-3 rounded-xl bg-surface-elevated/40 border border-border text-[11px] space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Tasks to be removed:</span>
+                  <span className="font-mono font-bold text-foreground">{impact.tasksToDelete?.length || 0}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Tasks to be reverted:</span>
+                  <span className="font-mono font-bold text-foreground">{impact.tasksToRevert?.length || 0}</span>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center justify-end gap-2 pt-3 border-t border-border">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl border border-border bg-card px-3.5 py-1.5 text-xs font-semibold text-foreground hover:bg-muted cursor-pointer"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={
+              executing ||
+              !impact ||
+              !impact.canRollback ||
+              (impact.orphanedWork && !confirmedOrphaned)
+            }
+            className="inline-flex items-center gap-1.5 rounded-xl bg-rose-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-rose-500 shadow-glow transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {executing ? <Loader2 className="size-3.5 animate-spin" /> : <RotateCcw className="size-3.5" />}
+            <span>Confirm & Execute Rollback</span>
+          </button>
+        </div>
       </div>
     </div>
   );

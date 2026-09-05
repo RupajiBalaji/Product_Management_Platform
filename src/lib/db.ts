@@ -1036,3 +1036,125 @@ export async function updateProjectSuccessMetrics(
   });
 }
 
+// ─── Phase 12: PRD & Change Transaction API ──────────────────────────────────
+
+export async function generateProjectPRD(
+  projectId: string
+): Promise<{ success: boolean; prd: import("@/lib/types").PRDDocument }> {
+  return await apiFetch(`/api/projects/${projectId}/prd/generate`, {
+    method: "POST",
+  });
+}
+
+export async function approveProjectPRD(
+  projectId: string,
+  prdId?: string
+): Promise<{ success: boolean; prd: import("@/lib/types").PRDDocument }> {
+  return await apiFetch(`/api/projects/${projectId}/prd/approve`, {
+    method: "POST",
+    body: JSON.stringify({ prdId }),
+  });
+}
+
+export async function updatePRD(
+  prdId: string,
+  data: Partial<import("@/lib/types").PRDDocument> & { isMajorVersion?: boolean }
+): Promise<{
+  success: boolean;
+  prd: import("@/lib/types").PRDDocument;
+  versionBumped: boolean;
+  previousVersion?: string;
+  diffs?: import("@/lib/types").PRDDiffItem[];
+}> {
+  return await apiFetch(`/api/prd/${prdId}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function getProjectPRDVersions(
+  projectId: string
+): Promise<{ success: boolean; versions: import("@/lib/types").PRDDocument[] }> {
+  return await apiFetch(`/api/projects/${projectId}/prd/versions`);
+}
+
+export async function getPRDById(
+  prdId: string
+): Promise<{ success: boolean; prd: import("@/lib/types").PRDDocument }> {
+  return await apiFetch(`/api/prd/${prdId}`);
+}
+
+export async function requestChangePreview(
+  projectId: string,
+  payload: {
+    change_description: string;
+    tasks_to_add?: any[];
+    tasks_to_modify?: any[];
+    hours_delta?: number;
+    days_delta?: number;
+  }
+): Promise<{ success: boolean; preview: import("@/lib/types").ScopeChangePreview }> {
+  return await apiFetch(`/api/projects/${projectId}/changes/request`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function applyChangeTransaction(
+  projectId: string,
+  payload: {
+    change_description: string;
+    consequence_summary: import("@/lib/types").ConsequenceSummary;
+    tasks_to_add?: any[];
+    tasks_to_modify?: any[];
+    prd_update?: Partial<import("@/lib/types").PRDDocument>;
+    is_major_version?: boolean;
+  }
+): Promise<{
+  success: boolean;
+  changeTransaction: import("@/lib/types").ChangeTransaction;
+  prd?: import("@/lib/types").PRDDocument;
+}> {
+  return await apiFetch(`/api/projects/${projectId}/changes/apply`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getProjectChanges(
+  projectId: string
+): Promise<{ success: boolean; changes: import("@/lib/types").ChangeTransaction[] }> {
+  return await apiFetch(`/api/projects/${projectId}/changes`);
+}
+
+export async function previewChangeRollback(
+  changeId: string
+): Promise<{
+  success: boolean;
+  changeTransaction: import("@/lib/types").ChangeTransaction;
+  impact: import("@/lib/types").RollbackImpact;
+}> {
+  return await apiFetch(`/api/changes/${changeId}/rollback-preview`, {
+    method: "POST",
+  });
+}
+
+export async function rollbackChangeTransaction(
+  changeId: string,
+  confirmed: boolean = false
+): Promise<{
+  success: boolean;
+  message?: string;
+  changeTransaction: import("@/lib/types").ChangeTransaction;
+  revertedPrdVersion?: string;
+  error?: string;
+  requiresConfirmation?: boolean;
+  orphanedWork?: Array<{ taskId: string; title: string; hoursCompleted: number }>;
+  conflictingTasks?: Array<{ taskId: string; reason: string }>;
+}> {
+  return await apiFetch(`/api/changes/${changeId}/rollback`, {
+    method: "POST",
+    body: JSON.stringify({ confirmed }),
+  });
+}
+

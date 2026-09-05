@@ -520,3 +520,86 @@ export interface IncompleteTaskItem {
   assignee_ids: string[];
 }
 
+// ─── Phase 12: PRD & Change Transaction Types ────────────────────────────────
+export interface PRDUserStory {
+  story: string;
+  given: string;
+  when: string;
+  then: string;
+}
+
+export interface PRDTeamComposition {
+  userId: string;
+  roleId?: string;
+}
+
+export interface PRDDiffItem {
+  field: string;
+  before: any;
+  after: any;
+}
+
+export interface PRDDocument {
+  id?: string;
+  _id?: string;
+  project_id: string;
+  version: string;
+  executive_summary: string;
+  scope_in: string[];
+  scope_out: string[];
+  user_stories: PRDUserStory[];
+  technical_architecture: string;
+  team_composition: PRDTeamComposition[];
+  status: "draft" | "approved" | "superseded";
+  superseded_by?: string | null;
+  diff_summary?: PRDDiffItem[];
+  created_by: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ConsequenceSummary {
+  deltaHours: number;
+  deltaDays: number;
+  deltaCost: number;
+  formattedCostDelta?: string;
+  affectedTaskIds: string[];
+  utilizationImpact: Array<{ userId: string; newUtilizationPct: number }>;
+}
+
+export interface ChangeTransaction {
+  id?: string;
+  _id?: string;
+  project_id: string;
+  requested_by: string;
+  change_description: string;
+  consequence_summary: ConsequenceSummary;
+  prd_version_before: string;
+  prd_version_after: string;
+  tasks_added: string[];
+  tasks_modified: Array<{ taskId: string; before: any; after: any }>;
+  status: "applied" | "rolled_back";
+  applied_at: string;
+  rolled_back_at?: string | null;
+  rolled_back_by?: string | null;
+  rollback_blocked_reason?: string | null;
+}
+
+export interface RollbackImpact {
+  canRollback: boolean;
+  orphanedWork: Array<{ taskId: string; title: string; hoursCompleted: number }>;
+  conflictingTasks: Array<{ taskId: string; reason: string }>;
+  hoursToBeFreed: number;
+  blockReason: string | null;
+}
+
+export interface ScopeChangePreview {
+  project_id: string;
+  change_description: string;
+  consequence_summary: ConsequenceSummary;
+  prd_version_before: string;
+  prd_version_after: string;
+  tasks_to_add: any[];
+  tasks_to_modify: any[];
+}
+

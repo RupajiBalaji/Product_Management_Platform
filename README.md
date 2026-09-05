@@ -167,17 +167,38 @@ Traditional enterprise project management tools (Jira, Asana, Monday.com) are fr
   - Executive Portfolio dashboard (`/pm/portfolio`) includes tabbed status filters (`ALL`, `Active`, `Completed`, `Frozen`, `Archived`) with visually distinct completion badges.
   - Interactive Retrospective Dashboard embedded directly into the completed project view (`/pm/projects/$projectId`), featuring 4-card incident metrics, estimation variance tables, success metrics scorecard, AI lessons learned, and team performance telemetry.
 
-### 13. 📅 Interactive Calendar Matrix GUI
+### 13. 📜 PRD Specification, Semantic Versioning & Change Rollback Engine (Phase 12)
+- **Structured PRD Data Model (`server/models/PRD.js`)**:
+  - Semantic versioning: `1.0`, `1.1`, `2.0` with compound unique index on `{ project_id: 1, version: 1 }`.
+  - Rich specification contract: `executive_summary`, explicit `scope_in` deliverables, explicit `scope_out` non-goals, and BDD user stories (`story`, `given`, `when`, `then`).
+  - Technical architecture notes, team composition recommendations, and lifecycle status (`draft`, `approved`, `superseded`).
+- **AI-Powered PRD Generation (`POST /api/projects/:id/prd/generate`)**:
+  - Google Gemini AI synthesizes executive intent into complete Given/When/Then user stories, scope boundaries, and technical architecture with built-in safe fallback.
+- **Approved PRD Immutability & Automatic Semver Versioning (`PATCH /api/prd/:id`)**:
+  - Approved PRDs are immutable: edits automatically create a new semver version (`nextVersion`), compute field-level diffs (`computeFieldDiff`), mark the previous version as `superseded`, and record `superseded_by`.
+- **Change Transaction Ledger (`server/models/ChangeTransaction.js`)**:
+  - Tracks proposed and applied scope changes with detailed before/after snapshots of modified tasks.
+  - Live consequence calculations: delta hours, delta days, delta cost, and affected task IDs.
+- **Pure Logic Rollback Validator (`server/lib/changeRollback.js`)**:
+  - **Zero-Conflict Rollback**: Safely deletes added tasks and reverts modified tasks to their exact pre-change state.
+  - **Orphaned Work Detection**: Tasks completed after a scope change require explicit user confirmation (`confirmed: true`) before deletion.
+  - **Divergence & Conflict Blocker**: Detects downstream modifications or newer active changes touching the same task, hard-blocking rollbacks with HTTP 409 and detailed conflict diagnostics.
+- **Interactive PRD Viewer & Governance UI**:
+  - Dropdown semantic version selector and visual Field Diff Comparison Mode comparing any two versions.
+  - Scope Change Request modal with live schedule, cost, and PRD version impact preview.
+  - Scope Change Log displaying consequence summary badges, PRD version transitions, and CEO/Product Lead rollback actions.
+
+### 14. 📅 Interactive Calendar Matrix GUI
 - **Day-by-Day Contributor Matrix**: Interactive grid showing real-time contributor status (`Completed`, `In Progress`, `Blocked`, `No Log`).
 - **Instant Log Inspector Modal**: Click any log cell to inspect submitted deliverables, actual hours spent, blocker descriptions, and PR links.
 
-### 14. 👥 Employee 360 & Workload Capacity Engine
+### 15. 👥 Employee 360 & Workload Capacity Engine
 - **Capacity Gauge**: Visual circular gauge displaying real-time allocation percentage across all active projects.
 - **Multi-Project Team Allocation**: Add and remove contributors from projects with automatic role matching.
 - **High-Priority Project Guardrail**: Mark critical initiatives as **High Priority** so developers with multiple commitments know where to focus first.
 - **1-Click Dossier Export**: Generate and print clean executive performance dossiers.
 
-### 15. 🧠 5-Dimension AI Summary & Copilot Hub
+### 16. 🧠 5-Dimension AI Summary & Copilot Hub
 - **Single-Log & Multi-Log Summaries**: Synthesize daily standup entries into concise bulleted highlights.
 - **Project-Level & Sprint Velocity Insights**: Identify critical-path blockers and predict delivery variance.
 - **Employee 360 & Org-Wide Synthesis**: Executive health checks across engineering, design, and QA.
@@ -337,6 +358,16 @@ The repository is configured as a **Unified Web Service** on Render where Expres
 | `PATCH` | `/api/projects/:id/success-metrics` | Define/update project target success metrics (Product Lead only) |
 | `POST` | `/api/projects/:id/complete` | Complete project, verify all tasks done, lock Retrospective (Product Lead only) |
 | `GET` | `/api/projects/:id/retrospective` | View immutable project retrospective (cost-scrubbed for non-leads) |
+| `POST` | `/api/projects/:id/prd/generate` | Generate initial draft PRD with AI BDD user stories & architecture (Product Lead only) |
+| `POST` | `/api/projects/:id/prd/approve` | Approve draft PRD version (Product Lead/CEO only) |
+| `PATCH` | `/api/prd/:id` | Edit PRD in-place if draft, or supersede & bump semver if approved |
+| `GET` | `/api/projects/:id/prd/versions` | List all historical and active PRD versions with semver |
+| `GET` | `/api/prd/:id` | Fetch specific PRD document with diff_summary against prior version |
+| `POST` | `/api/projects/:id/changes/request` | Request scope change consequence preview (delta hours/days/cost) |
+| `POST` | `/api/projects/:id/changes/apply` | Apply formal change transaction, snapshot tasks, and bump PRD semver |
+| `GET` | `/api/projects/:id/changes` | List scope change transactions and rollback status |
+| `POST` | `/api/changes/:id/rollback-preview` | Inspect rollback impact, orphaned work, and blocker conflicts |
+| `POST` | `/api/changes/:id/rollback` | Rollback scope change, restore PRD version, and revert tasks (requires confirmation for completed work) |
 | `POST` | `/api/logs` | Submit daily work log with blocker status |
 | `GET` | `/api/analytics/matrix/:projectId` | Aggregate day-by-day contributor calendar grid |
 | `POST` | `/api/ai/summarize` | Generate multi-dimension executive synthesis |

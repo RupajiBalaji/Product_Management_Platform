@@ -29,6 +29,8 @@ const portfolioRoutes = require("./routes/portfolio");
 const creationThreadRoutes = require("./routes/creationThread");
 const { router: collaborationRoutes } = require("./routes/collaboration");
 const retrospectiveRoutes = require("./routes/retrospective");
+const prdRoutes = require("./routes/prd");
+const changeRoutes = require("./routes/changes");
 const { startSlippageCron, runSlippageCheck } = require("./jobs/slippageChecker");
 const { startPriorityNudgeCron, runMiddayPriorityNudge } = require("./jobs/priorityNudge");
 const { initThreadMonitorCron, runThreadDisagreementMonitor } = require("./jobs/threadMonitor");
@@ -124,6 +126,8 @@ app.use("/api/portfolio", portfolioRoutes);
 app.use("/api", creationThreadRoutes);
 app.use("/api", collaborationRoutes);
 app.use("/api/projects", retrospectiveRoutes);
+app.use("/api", prdRoutes);
+app.use("/api", changeRoutes);
 
 // Internal runner endpoint for automated/manual slippage check
 app.post("/api/internal/run-slippage-check", async (req, res) => {
