@@ -16,11 +16,20 @@ import {
   Clock,
   RotateCcw,
   Loader2,
+  TrendingUp,
+  Award,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { useAuth } from "@/context/AuthContext";
-import { getAllProjects, getAllEmployees, getActiveSlippageEscalations, resolveSlippageEvent } from "@/lib/db";
-import type { Project, UserProfile, SlippageEvent } from "@/lib/types";
+import {
+  getAllProjects,
+  getAllEmployees,
+  getActiveSlippageEscalations,
+  resolveSlippageEvent,
+  getPendingGrowthAlerts,
+  acknowledgeGrowthAlert,
+} from "@/lib/db";
+import type { Project, UserProfile, SlippageEvent, TrendAlertNotification } from "@/lib/types";
 import { PRIORITY_STYLES, normalizePriority, isElevatedPriority, SLIPPAGE_LEVEL_STYLES } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
@@ -32,27 +41,38 @@ export const Route = createFileRoute("/pm/dashboard")({
 
 function PMDashboard() {
   const { userProfile } = useAuth();
+  const isProductLead =
+    userProfile?.user_type === "product_lead" ||
+    userProfile?.user_type === "pm" ||
+    userProfile?.user_type === "lead_architect";
+
   const [projects, setProjects] = useState<Project[]>([]);
   const [employees, setEmployees] = useState<UserProfile[]>([]);
   const [slippageEscalations, setSlippageEscalations] = useState<SlippageEvent[]>([]);
+  const [growthAlerts, setGrowthAlerts] = useState<TrendAlertNotification[]>([]);
   const [resolvingId, setResolvingId] = useState<string | null>(null);
+  const [acknowledgingAlertId, setAcknowledgingAlertId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   const loadData = async () => {
-    const [p, e, s] = await Promise.all([
+    const [p, e, s, g] = await Promise.all([
       getAllProjects(),
       getAllEmployees(),
       getActiveSlippageEscalations(),
+      isProductLead ? getPendingGrowthAlerts().catch(() => ({ success: false, alerts: [] })) : Promise.resolve({ success: false, alerts: [] }),
     ]);
     setProjects(p);
     setEmployees(e);
     setSlippageEscalations(s);
+    if (g && g.success && Array.isArray(g.alerts)) {
+      setGrowthAlerts(g.alerts);
+    }
     setLoading(false);
   };
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [isProductLead]);
 
   const handleResolve = async (id: string, option: string) => {
     setResolvingId(id);
@@ -64,6 +84,21 @@ function PMDashboard() {
       toast.error(err.message || "Failed to resolve escalation");
     } finally {
       setResolvingId(null);
+    }
+  };
+
+  const handleAcknowledgeAlert = async (alertId: string) => {
+    setAcknowledgingAlertId(alertId);
+    try {
+      const res = await acknowledgeGrowthAlert(alertId);
+      if (res.success) {
+        toast.success("Trend alert acknowledged");
+        setGrowthAlerts((prev) => prev.filter((a) => (a.id || a._id) !== alertId));
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to acknowledge trend alert");
+    } finally {
+      setAcknowledgingAlertId(null);
     }
   };
 
@@ -206,6 +241,119 @@ function PMDashboard() {
               );
             })}
           </div>
+        </div>
+      )}
+
+      {/* Product Lead Growth & Trajectory Alerts Panel */}
+      {isProductLead && (
+        <div className="mb-8 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="size-4 text-primary" />
+              <h2 className="font-display text-base font-extrabold text-foreground flex items-center gap-2">
+                Growth & Trajectory Alerts
+                {growthAlerts.length > 0 && (
+                  <span className="rounded-full bg-primary/15 text-primary text-xs px-2 py-0.5 font-mono">
+                    {growthAlerts.length}
+                  </span>
+                )}
+              </h2>
+            </div>
+            <p className="text-eyebrow text-[10px] text-muted-foreground hidden sm:block">
+              Weekly trajectory shifts requiring coaching or recognition
+            </p>
+          </div>
+
+          {growthAlerts.length === 0 ? (
+            <div className="panel p-5 flex items-center justify-between border border-border/70 bg-card/60">
+              <div className="flex items-center gap-3">
+                <CheckCircle2 className="size-5 text-emerald-500 shrink-0" />
+                <div>
+                  <p className="text-xs font-semibold text-foreground">
+                    All employee trajectories are within expected parameters.
+                  </p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    Linear regression slope monitoring will notify you when sustained shifts (&gt;15%) are detected.
+                  </p>
+                </div>
+              </div>
+              <span className="text-[10px] font-mono text-muted-foreground hidden md:inline px-2.5 py-1 rounded-md bg-muted">
+                Trailing 12-Week Window
+              </span>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {growthAlerts.map((alert) => {
+                const alertId = alert.id || alert._id || "";
+                const isPositive =
+                  (alert as any).alert_style === "positive" ||
+                  alert.message?.toLowerCase().includes("improved") ||
+                  alert.title?.toLowerCase().includes("positive");
+                const empId = (alert as any).employee_id;
+                const isAcknowledging = acknowledgingAlertId === alertId;
+
+                return (
+                  <div
+                    key={alertId}
+                    className={cn(
+                      "panel p-5 border-l-4 bg-card/90 space-y-3.5 shadow-sm transition-all",
+                      isPositive
+                        ? "border-l-emerald-500 hover:border-l-emerald-400"
+                        : "border-l-amber-500 hover:border-l-amber-400"
+                    )}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <span
+                        className={cn(
+                          "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide border",
+                          isPositive
+                            ? "bg-emerald-500/15 text-emerald-500 border-emerald-500/30"
+                            : "bg-amber-500/15 text-amber-500 border-amber-500/30"
+                        )}
+                      >
+                        {isPositive ? "🌟 Recognition Opportunity" : "⚠️ Coaching/Review Recommended"}
+                      </span>
+                      <span className="text-eyebrow text-[9px] text-muted-foreground">
+                        {alert.created_at ? format(new Date(alert.created_at), "MMM d, HH:mm") : "Recent"}
+                      </span>
+                    </div>
+
+                    <p className="text-xs text-foreground font-medium leading-relaxed">
+                      {alert.message}
+                    </p>
+
+                    <div className="flex items-center justify-between gap-2 pt-1 border-t border-border/50">
+                      {empId ? (
+                        <Link
+                          to="/pm/employees/$employeeId"
+                          params={{ employeeId: empId }}
+                          className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline"
+                        >
+                          Inspect Trajectory
+                          <ArrowRight className="size-3" />
+                        </Link>
+                      ) : (
+                        <span className="text-[11px] text-muted-foreground">Automated System Monitor</span>
+                      )}
+
+                      <button
+                        disabled={isAcknowledging}
+                        onClick={() => handleAcknowledgeAlert(alertId)}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-elevated hover:bg-muted text-[10px] font-bold text-foreground px-3 py-1.5 transition-all cursor-pointer disabled:opacity-50"
+                      >
+                        {isAcknowledging ? (
+                          <Loader2 className="size-3 animate-spin" />
+                        ) : (
+                          <CheckCircle2 className="size-3 text-muted-foreground" />
+                        )}
+                        Acknowledge
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 

@@ -31,9 +31,11 @@ const { router: collaborationRoutes } = require("./routes/collaboration");
 const retrospectiveRoutes = require("./routes/retrospective");
 const prdRoutes = require("./routes/prd");
 const changeRoutes = require("./routes/changes");
+const growthRoutes = require("./routes/growth");
 const { startSlippageCron, runSlippageCheck } = require("./jobs/slippageChecker");
 const { startPriorityNudgeCron, runMiddayPriorityNudge } = require("./jobs/priorityNudge");
 const { initThreadMonitorCron, runThreadDisagreementMonitor } = require("./jobs/threadMonitor");
+const { initPerformanceSnapshotCron } = require("./jobs/performanceSnapshotter");
 const seedDatabase = require("./seed");
 const { verifyToken, requirePM } = require("./middleware/auth");
 
@@ -128,6 +130,7 @@ app.use("/api", collaborationRoutes);
 app.use("/api/projects", retrospectiveRoutes);
 app.use("/api", prdRoutes);
 app.use("/api", changeRoutes);
+app.use("/api/growth", growthRoutes);
 
 // Internal runner endpoint for automated/manual slippage check
 app.post("/api/internal/run-slippage-check", async (req, res) => {
@@ -290,6 +293,8 @@ if (require.main === module) {
     startPriorityNudgeCron();
     // Initialize automated passive PM thread disagreement monitor cron job
     initThreadMonitorCron();
+    // Initialize automated weekly performance snapshotter cron job
+    initPerformanceSnapshotCron();
   });
 }
 

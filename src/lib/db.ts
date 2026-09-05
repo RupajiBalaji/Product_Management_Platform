@@ -1158,3 +1158,42 @@ export async function rollbackChangeTransaction(
   });
 }
 
+// ─── Phase 13: Long-Term Employee Growth Trajectory API Functions ─────────────
+
+export async function getEmployeeGrowthTrajectory(
+  userId: string
+): Promise<import("@/lib/types").GrowthTrajectoryResponse> {
+  return await apiFetch(`/api/growth/${userId}`);
+}
+
+export async function getEmployeeGrowthChartData(
+  userId: string
+): Promise<{ success: boolean; chart_data: import("@/lib/types").GrowthChartPoint[] }> {
+  return await apiFetch(`/api/growth/${userId}/chart-data`);
+}
+
+export async function getPendingGrowthAlerts(): Promise<{
+  success: boolean;
+  alerts: import("@/lib/types").TrendAlertNotification[];
+}> {
+  return await apiFetch(`/api/growth/alerts/pending`);
+}
+
+export async function acknowledgeGrowthAlert(
+  alertId: string
+): Promise<{ success: boolean; notification: import("@/lib/types").TrendAlertNotification }> {
+  return await apiFetch(`/api/growth/alerts/${alertId}/acknowledge`, {
+    method: "POST",
+  });
+}
+
+export async function triggerPerformanceSnapshot(
+  weekEnding?: string
+): Promise<{ success: boolean; result: any }> {
+  return await apiFetch(`/api/growth/snapshot/trigger`, {
+    method: "POST",
+    body: JSON.stringify(weekEnding ? { week_ending: weekEnding } : {}),
+  });
+}
+
+

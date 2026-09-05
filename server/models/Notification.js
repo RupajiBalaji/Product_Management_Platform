@@ -14,6 +14,7 @@ const notificationSchema = new mongoose.Schema(
         "midday_p0_nudge",
         "sme_invite",
         "unresolved_disagreement",
+        "trend_alert",
         "system",
       ],
       default: "system",
@@ -21,11 +22,13 @@ const notificationSchema = new mongoose.Schema(
     entity_id: { type: mongoose.Schema.Types.ObjectId },
     entity_type: { type: String, default: "SlippageEvent" },
     read: { type: Boolean, default: false },
+    acknowledged: { type: Boolean, default: false },
   },
   { timestamps: { createdAt: "created_at", updatedAt: "updated_at" } }
 );
 
 notificationSchema.index({ recipient_id: 1, read: 1 });
+notificationSchema.index({ recipient_id: 1, type: 1, acknowledged: 1 });
 notificationSchema.index({ type: 1, createdAt: -1 });
 
 module.exports = mongoose.model("Notification", notificationSchema);

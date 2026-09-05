@@ -603,3 +603,67 @@ export interface ScopeChangePreview {
   tasks_to_modify: any[];
 }
 
+// ─── Phase 13: Long-Term Employee Growth Trajectory Types ────────────────────
+
+export interface PerformanceSnapshot {
+  id?: string;
+  _id?: string;
+  user_id: string;
+  week_ending: string;
+  on_time_reliability_pct: number;
+  first_pass_quality_pct: number;
+  estimation_accuracy_pct: number;
+  tasks_completed: number;
+  projects_active: string[];
+  created_at?: string;
+}
+
+export interface TrendResult {
+  trend: "improving" | "declining" | "stable";
+  slopePerWeek: number;
+  startValue: number | null;
+  endValue: number | null;
+  changeOverPeriod: number;
+  dataPointsCount: number;
+  note?: string;
+}
+
+export interface GrowthChartPoint {
+  week_ending: string;
+  on_time_reliability_pct: number;
+  first_pass_quality_pct: number;
+  estimation_accuracy_pct: number;
+  tasks_completed: number;
+}
+
+export interface GrowthTrajectoryResponse {
+  success: boolean;
+  user_id: string;
+  user?: {
+    id: string;
+    full_name: string;
+    role_title: string;
+  };
+  snapshots: PerformanceSnapshot[];
+  trends: {
+    on_time_reliability: TrendResult;
+    first_pass_quality: TrendResult;
+    estimation_accuracy: TrendResult;
+  };
+}
+
+export interface TrendAlertNotification {
+  id?: string;
+  _id?: string;
+  recipient_id: string;
+  title: string;
+  message: string;
+  type: string;
+  entity_id?: string;
+  entity_type?: string;
+  read: boolean;
+  acknowledged: boolean;
+  created_at: string;
+}
+
+

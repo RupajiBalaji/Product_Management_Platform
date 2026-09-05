@@ -13,6 +13,9 @@ import {
   Search,
   Printer,
   TrendingUp,
+  TrendingDown,
+  Minus,
+  Award,
   Activity,
   Flame,
   FileText,
@@ -21,6 +24,16 @@ import {
   DollarSign,
   Lock,
 } from "lucide-react";
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+  Legend,
+  CartesianGrid,
+} from "recharts";
 import { AppShell } from "@/components/app-shell";
 import { useAuth } from "@/context/AuthContext";
 import {
@@ -29,9 +42,18 @@ import {
   getEmployeeProjects,
   getTasksByEmployee,
   updateUserCostRate,
+  getEmployeeGrowthTrajectory,
 } from "@/lib/db";
 import { generateAISummary } from "@/lib/gemini";
-import type { UserProfile, Project, Task, DailyLog } from "@/lib/types";
+import type {
+  UserProfile,
+  Project,
+  Task,
+  DailyLog,
+  GrowthTrajectoryResponse,
+  PerformanceSnapshot,
+  TrendResult,
+} from "@/lib/types";
 import { normalizePriority, PRIORITY_STYLES } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -51,7 +73,9 @@ function EmployeeAnalyticsPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [logs, setLogs] = useState<DailyLog[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"projects" | "history" | "leave" | "ai">("projects");
+  const [activeTab, setActiveTab] = useState<
+    "projects" | "history" | "leave" | "ai" | "trajectory"
+  >("projects");
   const [aiSummary, setAiSummary] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -60,13 +84,17 @@ function EmployeeAnalyticsPage() {
   const [costRateInput, setCostRateInput] = useState<string>("");
   const [savingCostRate, setSavingCostRate] = useState(false);
 
+  const [trajectoryData, setTrajectoryData] = useState<GrowthTrajectoryResponse | null>(null);
+  const [trajectoryLoading, setTrajectoryLoading] = useState(false);
+
   useEffect(() => {
     const load = async () => {
-      const [profile, projs, tsks, lgLogs] = await Promise.all([
+      const [profile, projs, tsks, lgLogs, traj] = await Promise.all([
         getUserProfile(employeeId),
         getEmployeeProjects(employeeId),
         getTasksByEmployee(employeeId),
         getLogsByEmployee(employeeId),
+        getEmployeeGrowthTrajectory(employeeId).catch(() => null),
       ]);
       setEmp(profile);
       if (profile && profile.hourly_cost_rate !== undefined) {
@@ -75,6 +103,9 @@ function EmployeeAnalyticsPage() {
       setProjects(projs);
       setTasks(tsks);
       setLogs(lgLogs);
+      if (traj && traj.success) {
+        setTrajectoryData(traj);
+      }
       setLoading(false);
     };
     load();
@@ -231,6 +262,7 @@ Provide a structured, executive-grade evaluation formatted in clear markdown sec
     { id: "history", label: "Work History Stream (Module 2)", icon: History },
     { id: "leave", label: "Leave & Inactivity (Module 3)", icon: AlertCircle },
     { id: "ai", label: "AI Performance Profile (Module 4)", icon: Sparkles },
+    { id: "trajectory", label: "Growth Trajectory (Module 5)", icon: TrendingUp },
   ] as const;
 
   return (
@@ -629,8 +661,345 @@ Provide a structured, executive-grade evaluation formatted in clear markdown sec
           )}
         </div>
       )}
+
+      {/* Module 5: Long-Term Employee Growth Trajectory & Trend Analytics */}
+      {activeTab === "trajectory" && (
+        <div className="space-y-6">
+          {/* Header & Coaching Frame Callout */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="font-display font-bold text-foreground text-base">
+                  Long-Term Growth Trajectory & Trend Analytics
+                </h3>
+                <span className="rounded-full border border-primary/30 bg-primary/10 px-2.5 py-0.5 text-[10px] font-mono font-semibold text-primary">
+                  12-Week Trailing Window
+                </span>
+              </div>
+              <p className="text-eyebrow text-[10px] mt-0.5">
+                Longitudinal performance regression tracking across delivery, quality, and estimation
+              </p>
+            </div>
+          </div>
+
+          {/* Supportive Coaching Statement Card */}
+          <div className="panel p-4 border-l-4 border-l-primary/70 bg-gradient-to-r from-primary/5 via-card to-surface flex items-start gap-3 shadow-xs">
+            <Sparkles className="size-4 text-primary shrink-0 mt-0.5" />
+            <p className="text-xs text-foreground leading-relaxed">
+              <span className="font-semibold text-primary">Growth Coaching Philosophy: </span>
+              Growth trajectories highlight trends over time to support coaching conversations and
+              recognition. They are not a single-number performance rating. Use this data alongside
+              your own judgment for reviews and development conversations.
+            </p>
+          </div>
+
+          {/* Plain-English Trajectory Interpretation Banner */}
+          {trajectoryData?.trends && (
+            <div className="panel p-4 border border-border/80 bg-surface-elevated/40 flex items-center gap-3">
+              <Activity className="size-4 text-primary shrink-0" />
+              <div className="text-xs text-foreground">
+                <span className="font-semibold text-muted-foreground">Trajectory Summary: </span>
+                <span>{synthesizeInterpretation(trajectoryData.trends)}</span>
+              </div>
+            </div>
+          )}
+
+          {/* 3 Metric Trend KPI Summary Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* 1. On-Time Reliability */}
+            <TrendKpiCard
+              title="On-Time Reliability"
+              metricKey="on_time_reliability"
+              trendResult={trajectoryData?.trends?.on_time_reliability}
+              color="#10b981"
+              unit="%"
+            />
+
+            {/* 2. First-Pass Quality */}
+            <TrendKpiCard
+              title="First-Pass Quality"
+              metricKey="first_pass_quality"
+              trendResult={trajectoryData?.trends?.first_pass_quality}
+              color="#6366f1"
+              unit="%"
+            />
+
+            {/* 3. Estimation Accuracy */}
+            <TrendKpiCard
+              title="Estimation Accuracy"
+              metricKey="estimation_accuracy"
+              trendResult={trajectoryData?.trends?.estimation_accuracy}
+              color="#f59e0b"
+              unit="%"
+            />
+          </div>
+
+          {/* Multi-Line Recharts Trend Chart */}
+          <div className="panel p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="font-semibold text-foreground text-sm flex items-center gap-2">
+                  <TrendingUp className="size-4 text-primary" />
+                  Performance Trajectory Over Time
+                </h4>
+                <p className="text-eyebrow text-[10px] text-muted-foreground">
+                  Weekly aggregated reliability, quality, and estimation accuracy benchmarks
+                </p>
+              </div>
+              <div className="flex items-center gap-4 text-[11px] font-mono text-muted-foreground hidden sm:flex">
+                <span className="flex items-center gap-1.5">
+                  <span className="size-2.5 rounded-full bg-[#10b981]" /> On-Time Delivery
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="size-2.5 rounded-full bg-[#6366f1]" /> First-Pass Quality
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="size-2.5 rounded-full bg-[#f59e0b]" /> Estimation Accuracy
+                </span>
+              </div>
+            </div>
+
+            {(!trajectoryData?.snapshots || trajectoryData.snapshots.length === 0) ? (
+              <div className="p-12 text-center border border-dashed border-border rounded-xl">
+                <TrendingUp className="size-8 text-muted-foreground/40 mx-auto mb-2" />
+                <p className="text-sm font-semibold text-foreground">No Snapshot History Recorded Yet</p>
+                <p className="text-xs text-muted-foreground mt-1 max-w-sm mx-auto">
+                  Weekly performance snapshots aggregate automatically every Sunday at 23:55 or upon manual trigger.
+                </p>
+              </div>
+            ) : (
+              <div className="w-full pt-2">
+                <ResponsiveContainer width="100%" height={320}>
+                  <LineChart
+                    data={trajectoryData.snapshots.map((s) => ({
+                      date: s.week_ending ? format(new Date(s.week_ending), "MMM d") : "",
+                      on_time_reliability_pct: s.on_time_reliability_pct ?? 100,
+                      first_pass_quality_pct: s.first_pass_quality_pct ?? 100,
+                      estimation_accuracy_pct: s.estimation_accuracy_pct ?? 100,
+                      tasks_completed: s.tasks_completed ?? 0,
+                    }))}
+                    margin={{ top: 10, right: 25, left: -15, bottom: 0 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.6} />
+                    <XAxis
+                      dataKey="date"
+                      stroke="hsl(var(--muted-foreground))"
+                      fontSize={11}
+                      tickLine={false}
+                    />
+                    <YAxis
+                      domain={[0, 100]}
+                      unit="%"
+                      stroke="hsl(var(--muted-foreground))"
+                      fontSize={11}
+                      tickLine={false}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: "hsl(var(--card))",
+                        borderColor: "hsl(var(--border))",
+                        borderRadius: "10px",
+                        boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.2)",
+                        fontSize: "12px",
+                      }}
+                      formatter={(val: any) => [`${val}%`, ""]}
+                    />
+                    <Legend wrapperStyle={{ fontSize: "11px", paddingTop: "12px" }} />
+                    <Line
+                      type="monotone"
+                      dataKey="on_time_reliability_pct"
+                      name="On-Time Reliability %"
+                      stroke="#10b981"
+                      strokeWidth={2.5}
+                      dot={{ r: 3.5, fill: "#10b981" }}
+                      activeDot={{ r: 6 }}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="first_pass_quality_pct"
+                      name="First-Pass Quality %"
+                      stroke="#6366f1"
+                      strokeWidth={2.5}
+                      dot={{ r: 3.5, fill: "#6366f1" }}
+                      activeDot={{ r: 6 }}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="estimation_accuracy_pct"
+                      name="Estimation Accuracy %"
+                      stroke="#f59e0b"
+                      strokeWidth={2.5}
+                      dot={{ r: 3.5, fill: "#f59e0b" }}
+                      activeDot={{ r: 6 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </div>
+
+          {/* Historical Snapshot Log Table */}
+          {trajectoryData?.snapshots && trajectoryData.snapshots.length > 0 && (
+            <div className="panel p-5 space-y-3">
+              <h4 className="font-semibold text-foreground text-sm flex items-center gap-2">
+                <History className="size-4 text-primary" />
+                Snapshot History ({trajectoryData.snapshots.length} recorded weeks)
+              </h4>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="border-b border-border text-eyebrow text-[10px]">
+                      <th className="py-2 px-3">Week Ending</th>
+                      <th className="py-2 px-3">On-Time %</th>
+                      <th className="py-2 px-3">Quality %</th>
+                      <th className="py-2 px-3">Estimation %</th>
+                      <th className="py-2 px-3">Tasks Completed</th>
+                      <th className="py-2 px-3">Active Projects</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/60">
+                    {[...trajectoryData.snapshots].reverse().map((snap, idx) => (
+                      <tr key={snap._id || snap.id || idx} className="hover:bg-muted/30 transition-colors">
+                        <td className="py-2.5 px-3 font-mono font-medium text-foreground">
+                          {snap.week_ending ? format(new Date(snap.week_ending), "yyyy-MM-dd (EEEE)") : "--"}
+                        </td>
+                        <td className="py-2.5 px-3 font-semibold text-emerald-500">
+                          {snap.on_time_reliability_pct}%
+                        </td>
+                        <td className="py-2.5 px-3 font-semibold text-indigo-400">
+                          {snap.first_pass_quality_pct}%
+                        </td>
+                        <td className="py-2.5 px-3 font-semibold text-amber-500">
+                          {snap.estimation_accuracy_pct}%
+                        </td>
+                        <td className="py-2.5 px-3 font-mono text-foreground">
+                          {snap.tasks_completed}
+                        </td>
+                        <td className="py-2.5 px-3 text-muted-foreground font-mono text-[11px]">
+                          {snap.projects_active?.length || 0} active
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </AppShell>
   );
+}
+
+function TrendKpiCard({
+  title,
+  metricKey,
+  trendResult,
+  color,
+  unit,
+}: {
+  title: string;
+  metricKey: string;
+  trendResult?: TrendResult;
+  color: string;
+  unit: string;
+}) {
+  const currentVal = trendResult?.endValue !== null && trendResult?.endValue !== undefined
+    ? `${trendResult.endValue}${unit}`
+    : "--";
+  const trend = trendResult?.trend || "stable";
+  const slope = trendResult?.slopePerWeek ?? 0;
+  const change = trendResult?.changeOverPeriod ?? 0;
+  const count = trendResult?.dataPointsCount ?? 0;
+
+  return (
+    <div className="panel p-4 border-l-4 bg-card flex flex-col justify-between gap-3 shadow-sm" style={{ borderLeftColor: color }}>
+      <div>
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-eyebrow text-[10px] font-bold text-muted-foreground">{title}</span>
+          {getTrendBadge(trend)}
+        </div>
+        <div className="mt-2 flex items-baseline gap-2">
+          <span className="font-display text-2xl font-bold text-foreground tabular-nums">
+            {currentVal}
+          </span>
+          <span className="text-[11px] font-mono text-muted-foreground">
+            current
+          </span>
+        </div>
+      </div>
+
+      <div className="pt-2 border-t border-border/50 text-[11px] space-y-1">
+        <div className="flex items-center justify-between text-muted-foreground">
+          <span>Weekly Slope:</span>
+          <span className="font-mono font-semibold text-foreground">
+            {slope > 0 ? `+${slope.toFixed(1)}%` : `${slope.toFixed(1)}%`} / wk
+          </span>
+        </div>
+        <div className="flex items-center justify-between text-muted-foreground">
+          <span>Trailing Change:</span>
+          <span
+            className={cn(
+              "font-mono font-semibold",
+              change > 0 ? "text-emerald-500" : change < 0 ? "text-rose-500" : "text-muted-foreground"
+            )}
+          >
+            {change > 0 ? `+${change}%` : `${change}%`} over {count} wks
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function getTrendBadge(trend?: "improving" | "declining" | "stable") {
+  if (trend === "improving") {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+        <TrendingUp className="size-3" /> Improving
+      </span>
+    );
+  }
+  if (trend === "declining") {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30">
+        <TrendingDown className="size-3" /> Declining
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-muted text-muted-foreground border border-border">
+      <Minus className="size-3" /> Stable
+    </span>
+  );
+}
+
+function synthesizeInterpretation(trends?: GrowthTrajectoryResponse["trends"]) {
+  if (!trends) return "Insufficient historical snapshot data to calculate trend trajectories.";
+  const parts: string[] = [];
+  const { on_time_reliability, first_pass_quality, estimation_accuracy } = trends;
+
+  if (on_time_reliability.trend === "improving") {
+    parts.push(`on-time delivery is improving (${on_time_reliability.changeOverPeriod > 0 ? "+" : ""}${on_time_reliability.changeOverPeriod}% over ${on_time_reliability.dataPointsCount} weeks)`);
+  } else if (on_time_reliability.trend === "declining") {
+    parts.push(`on-time delivery shows a decline (${on_time_reliability.changeOverPeriod}% over ${on_time_reliability.dataPointsCount} weeks)`);
+  } else {
+    parts.push("on-time reliability is stable");
+  }
+
+  if (first_pass_quality.trend === "improving") {
+    parts.push(`first-pass quality is trending upward (${first_pass_quality.changeOverPeriod > 0 ? "+" : ""}${first_pass_quality.changeOverPeriod}%)`);
+  } else if (first_pass_quality.trend === "declining") {
+    parts.push(`first-pass quality has declined (${first_pass_quality.changeOverPeriod}%)`);
+  }
+
+  if (estimation_accuracy.trend === "improving") {
+    parts.push(`estimation accuracy is notably sharpening (${estimation_accuracy.changeOverPeriod > 0 ? "+" : ""}${estimation_accuracy.changeOverPeriod}%)`);
+  } else if (estimation_accuracy.trend === "declining") {
+    parts.push(`estimation variance has broadened (${estimation_accuracy.changeOverPeriod}%)`);
+  }
+
+  return "Consistently tracking: " + parts.join(", and ") + ".";
 }
 
 function Stat({ label, value, tone }: { label: string; value: string; tone?: string }) {
