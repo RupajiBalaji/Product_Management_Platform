@@ -2220,6 +2220,7 @@ function ProjectDetailPage() {
         <SuccessMetricsModal
           metrics={metricsEditorList}
           loading={savingMetrics}
+          isLocked={project?.status === "completed"}
           onChangeMetrics={setMetricsEditorList}
           onClose={() => setShowMetricsModal(false)}
           onSubmit={handleSaveMetrics}
@@ -3310,25 +3311,30 @@ function ProjectCompletionModal({
 function SuccessMetricsModal({
   metrics,
   loading,
+  isLocked = false,
   onChangeMetrics,
   onClose,
   onSubmit,
 }: {
   metrics: Array<{ description: string; target: string }>;
   loading: boolean;
+  isLocked?: boolean;
   onChangeMetrics: (m: Array<{ description: string; target: string }>) => void;
   onClose: () => void;
   onSubmit: (e: React.FormEvent) => void;
 }) {
   const handleAddRow = () => {
+    if (isLocked) return;
     onChangeMetrics([...metrics, { description: "", target: "" }]);
   };
 
   const handleRemoveRow = (index: number) => {
+    if (isLocked) return;
     onChangeMetrics(metrics.filter((_, idx) => idx !== index));
   };
 
   const handleChangeRow = (index: number, field: "description" | "target", value: string) => {
+    if (isLocked) return;
     const updated = [...metrics];
     updated[index] = { ...updated[index], [field]: value };
     onChangeMetrics(updated);
@@ -3343,11 +3349,18 @@ function SuccessMetricsModal({
               <Target className="size-4" />
             </div>
             <div>
-              <h2 className="font-display font-bold text-sm text-foreground">
-                Project Success Metrics & Targets
+              <h2 className="font-display font-bold text-sm text-foreground flex items-center gap-2">
+                <span>Project Success Metrics & Targets</span>
+                {isLocked && (
+                  <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-muted text-muted-foreground border border-border flex items-center gap-1">
+                    <Lock className="size-2.5" /> Locked
+                  </span>
+                )}
               </h2>
               <p className="text-[10px] text-muted-foreground">
-                Configure measurable goals and targets to benchmark project performance
+                {isLocked
+                  ? "Success metrics are locked because this project is completed. This data is part of the permanent retrospective record."
+                  : "Configure measurable goals and targets to benchmark project performance"}
               </p>
             </div>
           </div>
@@ -3356,11 +3369,18 @@ function SuccessMetricsModal({
           </button>
         </div>
 
+        {isLocked && (
+          <div className="rounded-xl border border-border/80 bg-muted/30 p-3 text-xs text-muted-foreground flex items-center gap-2">
+            <Lock className="size-3.5 text-muted-foreground shrink-0" />
+            <span>Success metrics cannot be edited post-completion. These targets are preserved in the permanent retrospective record.</span>
+          </div>
+        )}
+
         <form onSubmit={onSubmit} className="space-y-4">
           <div className="space-y-2.5 max-h-64 overflow-y-auto pr-1">
             {metrics.length === 0 ? (
               <div className="text-center py-6 text-xs text-muted-foreground italic border border-dashed border-border rounded-xl">
-                No success metrics configured yet. Add targets like latency budgets, test coverage, or throughput.
+                No success metrics configured for this project.
               </div>
             ) : (
               metrics.map((m, idx) => (
@@ -3369,41 +3389,49 @@ function SuccessMetricsModal({
                     <input
                       type="text"
                       value={m.description}
+                      disabled={isLocked}
                       onChange={(e) => handleChangeRow(idx, "description", e.target.value)}
                       placeholder="Metric description (e.g. P95 API Latency)"
-                      className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-xs text-foreground outline-none focus:border-primary"
+                      className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-xs text-foreground outline-none focus:border-primary disabled:opacity-60 disabled:cursor-not-allowed"
                     />
                   </div>
                   <div className="w-36 space-y-1">
                     <input
                       type="text"
                       value={m.target}
+                      disabled={isLocked}
                       onChange={(e) => handleChangeRow(idx, "target", e.target.value)}
                       placeholder="Target (e.g. < 200ms)"
-                      className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-xs text-foreground outline-none focus:border-primary font-mono"
+                      className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-xs text-foreground outline-none focus:border-primary font-mono disabled:opacity-60 disabled:cursor-not-allowed"
                     />
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveRow(idx)}
-                    className="p-1.5 text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
-                    title="Remove metric"
-                  >
-                    <Trash2 className="size-4" />
-                  </button>
+                  {!isLocked && (
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveRow(idx)}
+                      className="p-1.5 text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
+                      title="Remove metric"
+                    >
+                      <Trash2 className="size-4" />
+                    </button>
+                  )}
                 </div>
               ))
             )}
           </div>
 
           <div className="flex items-center justify-between pt-1">
-            <button
-              type="button"
-              onClick={handleAddRow}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted cursor-pointer"
-            >
-              <Plus className="size-3.5 text-primary" /> Add Metric
-            </button>
+            {!isLocked ? (
+              <button
+                type="button"
+                onClick={handleAddRow}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted cursor-pointer"
+              >
+                <Plus className="size-3.5 text-primary" /> Add Metric
+              </button>
+            ) : (
+              <div />
+            )}
 
             <div className="flex items-center gap-2">
               <button
@@ -3412,16 +3440,18 @@ function SuccessMetricsModal({
                 disabled={loading}
                 className="rounded-xl border border-border bg-card px-3.5 py-1.5 text-xs font-semibold text-foreground hover:bg-muted cursor-pointer"
               >
-                Cancel
+                {isLocked ? "Close" : "Cancel"}
               </button>
-              <button
-                type="submit"
-                disabled={loading}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-4 py-1.5 text-xs font-bold text-primary-foreground hover:bg-primary/90 shadow-xs cursor-pointer disabled:opacity-50"
-              >
-                {loading ? <Loader2 className="size-3.5 animate-spin" /> : null}
-                <span>Save Targets</span>
-              </button>
+              {!isLocked && (
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-4 py-1.5 text-xs font-bold text-primary-foreground hover:bg-primary/90 shadow-xs cursor-pointer disabled:opacity-50"
+                >
+                  {loading ? <Loader2 className="size-3.5 animate-spin" /> : null}
+                  <span>Save Targets</span>
+                </button>
+              )}
             </div>
           </div>
         </form>

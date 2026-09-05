@@ -261,6 +261,19 @@ async function runIntegrationTests() {
       assert.strictEqual(patchRes.status, 404);
     });
 
+    // ── 7. Success Metrics Locked Post-Completion (409 Conflict) ──────────────
+    await runTest("PATCH /api/projects/:id/success-metrics returns 409 post-completion", async () => {
+      const res = await makeRequest(baseUrl, "PATCH", `/api/projects/${testProjectId}/success-metrics`, leadHeaders, {
+        metrics: [{ description: "Post-completion alteration", target: "<50ms" }],
+      });
+      assert.strictEqual(res.status, 409);
+      assert.strictEqual(res.body.success, false);
+      assert.strictEqual(
+        res.body.error,
+        "Success metrics are locked once the project is completed and the retrospective has been generated. This data is now part of the permanent retrospective record."
+      );
+    });
+
     console.log("\n═══════════════════════════════════════════════════════");
     console.log(`PHASE 11 INTEGRATION TESTS SUMMARY: ${passedCount}/${totalCount} PASSED`);
     console.log("═══════════════════════════════════════════════════════");
@@ -271,6 +284,9 @@ async function runIntegrationTests() {
     await Task.deleteMany({ project_id: testProjectId });
     await Retrospective.deleteMany({ project_id: testProjectId });
     server.close();
+    setTimeout(() => {
+      process.exit(0);
+    }, 200);
   }
 }
 

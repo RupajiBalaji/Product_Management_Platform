@@ -263,6 +263,14 @@ router.patch("/:id/success-metrics", verifyToken, requireProductLead, async (req
       return res.status(404).json({ success: false, error: "Project not found" });
     }
 
+    if (project.status === "completed") {
+      return res.status(409).json({
+        success: false,
+        error:
+          "Success metrics are locked once the project is completed and the retrospective has been generated. This data is now part of the permanent retrospective record.",
+      });
+    }
+
     project.success_metrics = metrics.map((m) => ({
       description: String(m.description || "").trim(),
       target: String(m.target || "").trim(),
